@@ -336,20 +336,25 @@ export const register: Register = on => {
         }
       })
       const live = mapped.some(isLive)
-      if (mapped.some(a => !named.has(a.id))) {
-        for (const a of mapped) named.add(a.id)
-        await update($, names, m => {
-          const out = { ...m }
-          const taken = new Set(Object.values(out))
-          for (const a of mapped) {
-            if (out[a.id]) continue
-            out[a.id] = pickName(a.id, taken)
-            taken.add(out[a.id]!)
-          }
-          return out
-        })
-      }
       await update($, agents, () => mapped)
+      // Names are display only: a failure here never holds back the agent list.
+      if (mapped.some(a => !named.has(a.id))) {
+        try {
+          await update($, names, m => {
+            const out = { ...m }
+            const taken = new Set(Object.values(out))
+            for (const a of mapped) {
+              if (out[a.id]) continue
+              out[a.id] = pickName(a.id, taken)
+              taken.add(out[a.id]!)
+            }
+            return out
+          })
+          for (const a of mapped) named.add(a.id)
+        } catch {
+          // shown by type until a name sticks
+        }
+      }
       if (live) await update($, frame, n => n + 1)
     })
 
@@ -591,8 +596,7 @@ export const register: Register = on => {
           flexDirection="row"
           alignItems="center"
           borderStyle="round"
-          borderColor={live ? color : undefined}
-          borderDimColor={!live}
+          borderColor={live ? color : 'gray'}
           paddingX={2}
           paddingY={1}
           marginTop={1}
@@ -604,7 +608,7 @@ export const register: Register = on => {
               <Text>{ALT[sprite]}</Text>
             )}
           </Box>
-          <Box flexDirection="column" flexShrink={1} gap="xs">
+          <Box flexDirection="column" flexShrink={1}>
             <Text bold color={live ? color : undefined} dimColor={!live}>
               {nm[a.id] ?? a.type}
             </Text>
@@ -649,8 +653,7 @@ export const register: Register = on => {
         key={`panel-${key}`}
         flexDirection="column"
         borderStyle="round"
-        borderColor={color}
-        borderDimColor={!color}
+        borderColor={color ?? 'gray'}
         paddingX={2}
         paddingY={1}
       >
@@ -672,12 +675,10 @@ export const register: Register = on => {
           key={`issue-${n}`}
           flexDirection="column"
           borderStyle="round"
-          borderColor={accent}
-          borderDimColor={!accent}
+          borderColor={accent ?? 'gray'}
           paddingX={2}
           paddingY={1}
           marginTop={1}
-          gap="xs"
         >
           <Box flexDirection="row">
             <Text bold color={accent} dimColor={!accent}>#{n}</Text>
@@ -689,15 +690,14 @@ export const register: Register = on => {
           </Box>
           <Text dimColor={!accent}>{i?.title ? clip(i.title, 90) : 'Titel wird geladen …'}</Text>
           {w.length > 0 ? (
-            <Text dimColor>
-              in Arbeit bei{' '}
+            <Box flexDirection="row" flexWrap="wrap">
+              <Text dimColor>in Arbeit bei </Text>
               {w.map((a, k) => (
-                <Text key={`w-${n}-${a.id}`} bold color={colorOf(a.id)}>
-                  {k > 0 ? ', ' : ''}
-                  {nm[a.id] ?? a.type}
+                <Text bold color={colorOf(a.id)}>
+                  {k > 0 ? `, ${nm[a.id] ?? a.type}` : nm[a.id] ?? a.type}
                 </Text>
               ))}
-            </Text>
+            </Box>
           ) : (
             <Text dimColor>gerade niemand dran</Text>
           )}
