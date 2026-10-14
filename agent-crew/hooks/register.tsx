@@ -567,7 +567,8 @@ export const register: Register = on => {
 
     const issueLine = (n: number) => {
       const i = iss[String(n)]
-      return `#${n} ${i?.title ? clip(i.title, 60) : '…'}${i?.state ? ` [${i.state.toLowerCase()}]` : ''}`
+      const st = i?.state ? ({ OPEN: 'offen', CLOSED: 'geschlossen' } as Record<string, string>)[i.state.toUpperCase()] ?? i.state.toLowerCase() : ''
+      return `#${n} ${i?.title ? clip(i.title, 60) : '…'}${st ? ` · ${st}` : ''}`
     }
 
     const card = (a: CrewAgent) => {
@@ -623,55 +624,141 @@ export const register: Register = on => {
     }
 
     const issueNumbers = Object.keys(iss).map(Number).sort((a, b) => b - a).slice(0, 8)
-    const workers = (n: number) =>
-      list.filter(a => (lk[a.id] ?? []).includes(n) && isLive(a)).map(a => nm[a.id] ?? a.type)
+    const workersOf = (n: number) => list.filter(a => (lk[a.id] ?? []).includes(n) && isLive(a))
+
+    // A section: a clear heading with a short summary to its right, then its content.
+    const section = (key: string, title: string, meta: string, body: any, first = false) => (
+      <Box key={`sec-${key}`} flexDirection="column" marginTop={first ? 0 : 2}>
+        <Box flexDirection="row" alignItems="center" marginBottom={1}>
+          <Text bold color="cyan">▍</Text>
+          <Box marginLeft={1}>
+            <Text bold>{title}</Text>
+          </Box>
+          {meta ? (
+            <Box marginLeft={3}>
+              <Text dimColor>{meta}</Text>
+            </Box>
+          ) : null}
+        </Box>
+        {body}
+      </Box>
+    )
+    // The same rounded frame the agent cards use, for the other blocks.
+    const panel = (key: string, children: any, color?: string) => (
+      <Box
+        key={`panel-${key}`}
+        flexDirection="column"
+        borderStyle="round"
+        borderColor={color}
+        borderDimColor={!color}
+        paddingX={2}
+        paddingY={1}
+      >
+        {children}
+      </Box>
+    )
+
+    const STATE: Record<string, { label: string; color: string }> = {
+      OPEN: { label: '● offen', color: 'green' },
+      CLOSED: { label: '● geschlossen', color: 'magenta' },
+    }
+    const issueCard = (n: number) => {
+      const i = iss[String(n)]
+      const w = workersOf(n)
+      const accent = w.length > 0 ? colorOf(w[0]!.id) : undefined
+      const st = STATE[(i?.state ?? '').toUpperCase()]
+      return (
+        <Box
+          key={`issue-${n}`}
+          flexDirection="column"
+          borderStyle="round"
+          borderColor={accent}
+          borderDimColor={!accent}
+          paddingX={2}
+          paddingY={1}
+          marginTop={1}
+          gap="xs"
+        >
+          <Box flexDirection="row">
+            <Text bold color={accent} dimColor={!accent}>#{n}</Text>
+            {st && (
+              <Box marginLeft={3}>
+                <Text color={st.color}>{st.label}</Text>
+              </Box>
+            )}
+          </Box>
+          <Text dimColor={!accent}>{i?.title ? clip(i.title, 90) : 'Titel wird geladen …'}</Text>
+          {w.length > 0 ? (
+            <Text dimColor>
+              in Arbeit bei{' '}
+              {w.map((a, k) => (
+                <Text key={`w-${n}-${a.id}`} bold color={colorOf(a.id)}>
+                  {k > 0 ? ', ' : ''}
+                  {nm[a.id] ?? a.type}
+                </Text>
+              ))}
+            </Text>
+          ) : (
+            <Text dimColor>gerade niemand dran</Text>
+          )}
+        </Box>
+      )
+    }
+
+    const flowMeta = active >= STEPS.length ? 'alles erledigt' : `Schritt ${active + 1} von ${STEPS.length}`
+    const crewMeta = [`${running.length} aktiv`, done.length > 0 ? `${done.length} fertig` : ''].filter(Boolean).join(' · ')
+    const busyIssues = issueNumbers.filter(n => workersOf(n).length > 0).length
 
     return (
-      <Box flexDirection="column">
-        <Text bold>Ablauf</Text>
-        {stepper($, Box, Text, Button, Svg, active, t % 2)}
-        <Button
-          key="reset"
-          plain
-          dimColor
-          onPress={async () => {
-            await update($, flow, () => 0)
-            await $.store.set('flow', 0)
-          }}
-        >
-          ↺ zurücksetzen
-        </Button>
-        <Box marginTop={1} flexDirection="column">
-          <Text bold>Session-Cache</Text>
-          {cacheLine(Box, Text, Svg, cs, now, ttl, true)}
-        </Box>
-        <Box marginTop={1} flexDirection="column">
-          <Text bold>
-            Agent Crew <Text dimColor>({running.length} aktiv)</Text>
-          </Text>
-          {list.length === 0 && <Text dimColor>Keine Sub-Agents. Es ist ruhig im Bau...</Text>}
-          {running.map(card)}
-          {done.length > 0 && (
-            <Box marginTop={1}>
-              <Text dimColor>Zuletzt fertig</Text>
-            </Box>
-          )}
-          {done.map(card)}
-        </Box>
-        {issueNumbers.length > 0 && (
-          <Box flexDirection="column" marginTop={1}>
-            <Text bold>Issues</Text>
-            {issueNumbers.map(n => {
-              const w = workers(n)
-              return (
-                <Text dimColor={w.length === 0}>
-                  🎫 {issueLine(n)}
-                  {w.length > 0 ? `  ← ${w.join(', ')}` : ''}
-                </Text>
-              )
-            })}
-          </Box>
+      <Box flexDirection="column" paddingX={1} paddingY={1}>
+        {section(
+          'flow',
+          'Ablauf',
+          flowMeta,
+          panel(
+            'flow',
+            <Box flexDirection="column">
+              {stepper($, Box, Text, Button, Svg, active, t % 2)}
+              <Box marginTop={1}>
+                <Button
+                  key="reset"
+                  plain
+                  dimColor
+                  onPress={async () => {
+                    await update($, flow, () => 0)
+                    await $.store.set('flow', 0)
+                  }}
+                >
+                  ↺ zurücksetzen
+                </Button>
+              </Box>
+            </Box>,
+          ),
+          true,
         )}
+        {section('cache', 'Session-Cache', '', panel('cache', cacheLine(Box, Text, Svg, cs, now, ttl, true)))}
+        {section(
+          'crew',
+          'Agenten',
+          crewMeta,
+          <Box flexDirection="column">
+            {list.length === 0 && panel('empty', <Text dimColor>Keine Sub-Agents. Es ist ruhig im Bau …</Text>)}
+            {running.map(card)}
+            {done.length > 0 && (
+              <Box marginTop={1}>
+                <Text dimColor>Zuletzt fertig</Text>
+              </Box>
+            )}
+            {done.map(card)}
+          </Box>,
+        )}
+        {issueNumbers.length > 0 &&
+          section(
+            'issues',
+            'Issues',
+            `${issueNumbers.length} verknüpft${busyIssues > 0 ? ` · ${busyIssues} in Arbeit` : ''}`,
+            <Box flexDirection="column">{issueNumbers.map(issueCard)}</Box>,
+          )}
       </Box>
     )
   })
