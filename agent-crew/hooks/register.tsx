@@ -12,6 +12,8 @@ const frame = atom({ plugin: 'agent-crew', key: 'frame' } as const, 0)
 const issues = atom({ plugin: 'agent-crew', key: 'issues' } as const, {} as Record<string, Issue>)
 const links = atom({ plugin: 'agent-crew', key: 'links' } as const, {} as Record<string, number[]>)
 const tokens = atom({ plugin: 'agent-crew', key: 'tokens' } as const, {} as Record<string, number>)
+// Model per agent id: what its spawn resolved to, then what its latest request ran on (fallbacks too).
+const models = atom({ plugin: 'agent-crew', key: 'models' } as const, {} as Record<string, string>)
 // Prompt cache of the session: the main loop's last response, and sums over every loop.
 const cache = atom(
   { plugin: 'agent-crew', key: 'cache' } as const,
@@ -102,6 +104,15 @@ const ALT: Record<string, string> = {
 const LABEL: Record<string, string> = {
   idle: 'wartet', think: 'denkt', read: 'liest', search: 'sucht', edit: 'schreibt', bash: 'Terminal',
   test: 'testet', git: 'git', build: 'baut', web: 'Web', agent: 'startet Agent', done: 'fertig', fail: 'Fehler',
+}
+
+// "claude-opus-5-5" -> "Opus 5.5", "claude-haiku-4-5-20251001" -> "Haiku 4.5"; anything else as given.
+const modelName = (m: string | undefined): string => {
+  if (!m) return ''
+  const x = /(opus|sonnet|haiku|fable)-([0-9]+)(?:-([0-9]{1,2}))?(?![0-9])/i.exec(m)
+  if (!x) return m.replace(/^claude-/, '')
+  const fam = x[1]!.charAt(0).toUpperCase() + x[1]!.slice(1).toLowerCase()
+  return x[3] ? `${fam} ${x[2]}.${x[3]}` : `${fam} ${x[2]}`
 }
 
 const sec = (ms: number) => `${Math.max(0, Math.floor(ms / 1000))}s`
@@ -327,6 +338,30 @@ export const register: Register = on => {
     return next(e)
   }).catch(($, e, next) => next(e))
 
+  // Which model a subagent starts on, and what each of its requests actually runs on.
+  on('agent.spawn', async ($, e, next) => {
+    const r = await next(e)
+    try {
+      if ('agentId' in r && r.model) {
+        const id = String(r.agentId)
+        await update($, models, m => ({ ...m, [id]: r.model }))
+      }
+    } catch {
+      // display only
+    }
+    return r
+  }).catch(($, e, next) => next(e))
+
+  on('turn.step', async function* ($, e, next) {
+    try {
+      const id = (e as any).agentId as string | undefined
+      if (id && e.model) await update($, models, m => (m[id] === e.model ? m : { ...m, [id]: e.model }))
+    } catch {
+      // display only
+    }
+    return yield* next(e)
+  })
+
   on('command.run', { command: 'crew' }, async $ => {
     await $.ui.open({ id: PANE, title: 'Agent Crew' })
     return { text: 'Agent Crew pane opened.' }
@@ -446,6 +481,7 @@ export const register: Register = on => {
     const acts = await read($, activity)
     const cs = await read($, cache)
     const ttl = await read($, cacheTtl)
+    const mods = await read($, models)
     await read($, tick)
     const { Box, Text, Button, Svg } = $.ui.resolve(e) as any
 
@@ -466,7 +502,10 @@ export const register: Register = on => {
                 <Button key={`open-${a.id}`} plain onPress={() => $.ui.open({ id: PANE, title: 'Agent Crew' })}>
                   <Text bold color={colorOf(a.id)}>{clip(a.type, 16)}</Text>
                 </Button>
-                <Text dimColor>{LABEL[sprite]}</Text>
+                <Text dimColor>
+                  {LABEL[sprite]}
+                  {mods[a.id] ? ` · ${modelName(mods[a.id])}` : ''}
+                </Text>
               </Box>
             </Box>
           )
@@ -489,6 +528,7 @@ export const register: Register = on => {
     const active = await read($, flow)
     const cs = await read($, cache)
     const ttl = await read($, cacheTtl)
+    const mods = await read($, models)
     await read($, tick)
     const now = await $.clock.now()
     const running = list.filter(isLive)
@@ -517,6 +557,7 @@ export const register: Register = on => {
           <Box flexDirection="column">
             <Text bold color={color}>
               {a.type}
+              {mods[a.id] && <Text color="cyan">  🧠 {modelName(mods[a.id])}</Text>}
               <Text dimColor>  {LABEL[sprite]} · {sec((a.endedAt ?? now) - a.startedAt)} · {kTok(tok[a.id] ?? 0)} Tokens</Text>
             </Text>
             <Text dimColor>{(a.description || '').slice(0, 60)}</Text>
