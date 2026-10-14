@@ -1,1 +1,1 @@
-{ "name": "agent-crew", "version": "0.1.0", "description": "Live pane showing running sub-agents as animated, individually styled Claude critters with their current tool activity.", "types": "./types/index.d.ts" }
+{ "name": "agent-crew", "version": "0.2.0", "description": "Live pane showing running sub-agents as animated, individually styled Claude critters with their current tool activity.", "types": "./types/index.d.ts" }
