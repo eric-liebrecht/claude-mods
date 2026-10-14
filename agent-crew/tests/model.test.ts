@@ -12,10 +12,22 @@ const peek = {
   },
 }
 
+// A complete spawn input, as the engine would hand it to the hooks.
+const spawnInput = (prompt: string) => ({
+  tool_use_id: 'tu1',
+  prompt,
+  description: prompt,
+  subagentType: 'Explore',
+  provider: { plugin: 'engine', tier: 'core' } as const,
+  parentModel: 'claude-opus-5-5',
+  background: false,
+  fork: false,
+})
+
 test('remembers the model a subagent was spawned on', { plugins: [peek] }, async ($, on) => {
   on('agent.spawn', () => ({ model: 'claude-opus-5-5', agentId: 'a1' }))
-  await $.agent.spawn({ prompt: 'look around', subagentType: 'Explore' })
+  await $.agent.spawn(spawnInput('look around'))
   // peek stands beneath agent-crew: a second spawn reads what the first one left.
-  const r = await $.agent.spawn({ prompt: 'peek', subagentType: 'Explore' })
-  expect('model' in r ? JSON.parse(r.model) : null).toMatchObject({ a1: 'claude-opus-5-5' })
+  const r = await $.agent.spawn(spawnInput('peek'))
+  expect('model' in r ? JSON.parse(r.model ?? 'null') : null).toMatchObject({ a1: 'claude-opus-5-5' })
 })

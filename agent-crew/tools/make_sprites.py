@@ -1,6 +1,6 @@
 """Generates hooks/sprites.ts: the pixel-art critters as SVG strings, 2 frames per state.
 
-Run: python tools/make_sprites.py   (needs Pillow)
+Run: python tools/make_sprites.py   (stdlib only, no extra dependencies)
 """
 import os
 

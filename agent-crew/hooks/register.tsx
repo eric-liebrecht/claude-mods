@@ -222,28 +222,31 @@ function nodeSvg(i: number, active: number, pulse: number): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 40">${top}${bottom}${circle}</svg>`
 }
 
-// Horizontal variant: circle at the left of its cell, line running to the right edge.
+// Horizontal variant: circle in the middle of its cell, a line half to each neighbour,
+// so the row is symmetric and centres as a whole.
 const CELL = 150
 function nodeSvgH(i: number, active: number, pulse: number): string {
   const isDone = i < active
   const isActive = i === active
-  const line =
+  const c = CELL / 2
+  const left = i === 0 ? '' : `<rect x="0" y="8" width="${c - 8}" height="2" fill="${i <= active ? GREEN : GRAY}"/>`
+  const right =
     i === STEPS.length - 1
       ? ''
-      : `<rect x="17" y="8" width="${CELL - 17}" height="2" fill="${i < active ? GREEN : GRAY}"/>`
+      : `<rect x="${c + 8}" y="8" width="${c - 8}" height="2" fill="${i < active ? GREEN : GRAY}"/>`
   let circle: string
   if (isDone) {
     circle =
-      `<circle cx="9" cy="9" r="7" fill="${GREEN}"/>` +
-      `<path d="M5.8 9.2 L8.2 11.6 L12.4 6.6" stroke="#0d1117" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`
+      `<circle cx="${c}" cy="9" r="7" fill="${GREEN}"/>` +
+      `<path d="M${c - 3.2} 9.2 L${c - 0.8} 11.6 L${c + 3.4} 6.6" stroke="#0d1117" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`
   } else if (isActive) {
     circle =
-      `<circle cx="9" cy="9" r="7" fill="#0d1117" stroke="${CYAN}" stroke-width="2"/>` +
-      `<circle cx="9" cy="9" r="${pulse ? 4 : 3}" fill="${CYAN}"/>`
+      `<circle cx="${c}" cy="9" r="7" fill="#0d1117" stroke="${CYAN}" stroke-width="2"/>` +
+      `<circle cx="${c}" cy="9" r="${pulse ? 4 : 3}" fill="${CYAN}"/>`
   } else {
-    circle = `<circle cx="9" cy="9" r="6" fill="none" stroke="${GRAY}" stroke-width="2"/>`
+    circle = `<circle cx="${c}" cy="9" r="6" fill="none" stroke="${GRAY}" stroke-width="2"/>`
   }
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${CELL} 18">${line}${circle}</svg>`
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${CELL} 18">${left}${right}${circle}</svg>`
 }
 
 // The flow as a vertical timeline: done, active, open. A press writes the skill into the prompt.
@@ -252,12 +255,13 @@ function stepper(
 ) {
   if (horizontal) {
     return (
+      <Box flexDirection="column" alignItems="center">
       <Box flexDirection="row" justifyContent="center">
         {STEPS.map((st, i) => {
           const isDone = i < active
           const isActive = i === active
           return (
-            <Box key={`step-${i}`} flexDirection="column" alignItems="flex-start">
+            <Box key={`step-${i}`} flexDirection="column" alignItems="center">
               {Svg ? (
                 <Svg source={nodeSvgH(i, active, pulse)} alt={isDone ? 'erledigt' : isActive ? 'aktiv' : 'offen'} width={CELL} height={18} />
               ) : (
@@ -274,7 +278,8 @@ function stepper(
             </Box>
           )
         })}
-        {active >= STEPS.length && <Text color="green" bold> Alles erledigt</Text>}
+      </Box>
+      {active >= STEPS.length && <Text color="green" bold>Alles erledigt</Text>}
       </Box>
     )
   }
@@ -290,14 +295,14 @@ function stepper(
             ) : (
               <Text color={isDone ? 'green' : isActive ? 'cyan' : undefined}>{isDone ? '✓' : isActive ? '●' : '○'}</Text>
             )}
-            <Box flexDirection="column" marginLeft={2}>
+            <Box flexDirection="row" alignItems="center" marginLeft={2}>
               <Button key={`btn-${i}`} plain onPress={() => $.prompt.fill({ text: `${st.command} `, mode: 'replace' })}>
-                <Text color={isDone ? 'green' : isActive ? 'cyan' : undefined} bold={isActive} dimColor={!isDone && !isActive}>
+                <Text color={isDone ? 'green' : isActive ? 'cyan' : undefined} bold dimColor={!isDone && !isActive}>
                   {st.label}
                 </Text>
               </Button>
-              <Text dimColor hover={{ dimColor: false, color: 'cyan' }}>
-                {st.command.replace('/mattpocock-skills:', '/')}
+              <Text dimColor italic hover={{ dimColor: false, color: 'cyan' }}>
+                {'  '}{st.command.replace('/mattpocock-skills:', '/')}
               </Text>
             </Box>
           </Box>

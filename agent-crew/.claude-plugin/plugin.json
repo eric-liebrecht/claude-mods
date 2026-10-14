@@ -1,1 +1,1 @@
-{ "name": "agent-crew", "version": "0.2.1", "description": "Live pane showing running sub-agents as animated, individually styled Claude critters with their current tool activity.", "types": "./types/index.d.ts" }
+{ "name": "agent-crew", "version": "0.2.1", "description": "Live pane showing running sub-agents as animated, individually styled Claude critters with their current tool activity.", "author": { "name": "Eric Liebrecht" }, "types": "./types/index.d.ts" }
