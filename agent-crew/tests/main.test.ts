@@ -25,7 +25,9 @@ test('the main agent has its own card while its turn runs', async ($, on) => {
     expect(await ui.find({ type: 'Text', text: /^Hauptagent$/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /^arbeitet$/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /^Claude$/ })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: /Grep {2}TODO/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /sucht/ })).toBeDefined()
+    // What it runs stays out of the card: name, model, state, tokens, turns and ticket only.
+    expect(await ui.find({ type: 'Text', text: /TODO/ })).toBeUndefined()
     await ui.unmount()
   }
   const band = await $.ui.mount({ plugin: 'agent-crew', surface: 'terminal', component: 'AbovePrompt', props: {} as any })

@@ -329,14 +329,38 @@ function stepper(
   )
 }
 
-export const register: Register = on => {
-  const fetching = new Set<number>()
+// Title and state of an issue as GitHub has them now; one lookup per issue at a time.
+const fetching = new Set<number>()
+function refresh($: any, n: number) {
+  if (fetching.has(n)) return
+  fetching.add(n)
+  void $.process
+    .run(['gh', 'issue', 'view', String(n), '--json', 'title,state'], { timeoutMs: 15000 })
+    .then(async (r: any) => {
+      if (r.exitCode !== 0) return
+      const j = JSON.parse(r.stdout) as { title?: string; state?: string }
+      await update($, issues, m => ({
+        ...m,
+        [n]: { number: n, title: j.title ?? m[n]?.title ?? '', state: j.state ?? m[n]?.state ?? '' },
+      }))
+    })
+    .catch(() => {})
+    .finally(() => fetching.delete(n))
+}
+// Every issue shown: closed or reopened elsewhere (on GitHub, by a merged PR) shows here too.
+async function refreshAll($: any) {
+  const known = ((await $.state.get({ plugin: 'agent-crew', key: 'issues' })).value ?? {}) as Record<string, Issue>
+  for (const n of Object.keys(known).map(Number).sort((a, b) => b - a).slice(0, 8)) refresh($, n)
+}
 
+export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({ name: 'crew', description: 'Show running sub-agents as pixel critters' })
     void $.ui.open({ id: PANE, title: 'Agent Crew' })
 
     $.clock.every(10000, () => update($, tick, n => n + 1))
+    void refreshAll($).catch(() => {})
+    $.clock.every(60000, () => refreshAll($).catch(() => {}))
 
     const saved = await $.store.get('flow')
     if (typeof saved === 'number') await update($, flow, () => saved)
@@ -488,7 +512,8 @@ export const register: Register = on => {
     const command = String((e as any).command ?? '')
     const isShell = e.tool === 'Bash' || e.tool === 'PowerShell'
 
-    // Remember an issue (and look up its title once) and link it to the agent working on it.
+    // Remember an issue and link it to the agent working on it; its state is looked up once the
+    // command has run, so a close or reopen shows as what it did.
     const touch = async (n: number, title?: string) => {
       await update($, links, m => {
         const rest = (m[who] ?? []).filter(x => x !== n)
@@ -498,21 +523,8 @@ export const register: Register = on => {
         ...m,
         [n]: { number: n, title: title ?? m[n]?.title ?? '', state: m[n]?.state ?? '' },
       }))
-      if (fetching.has(n)) return
-      fetching.add(n)
-      void $.process
-        .run(['gh', 'issue', 'view', String(n), '--json', 'title,state'], { timeoutMs: 15000 })
-        .then(async r => {
-          if (r.exitCode !== 0) return
-          const j = JSON.parse(r.stdout) as { title?: string; state?: string }
-          await update($, issues, m => ({
-            ...m,
-            [n]: { number: n, title: j.title ?? m[n]?.title ?? '', state: j.state ?? '' },
-          }))
-        })
-        .catch(() => {})
-        .finally(() => fetching.delete(n))
     }
+    const used = isShell ? [...command.matchAll(ISSUE_USE)].map(m => Number(m[1])) : []
 
     try {
       if (e.tool === 'Skill' && who === 'main') {
@@ -521,9 +533,7 @@ export const register: Register = on => {
       }
       const entry: Activity = { tool: e.tool, detail: detailOf(e), at: await $.clock.now() }
       await update($, activity, m => ({ ...m, [who]: [...(m[who] ?? []), entry].slice(-3) }))
-      if (isShell) {
-        for (const m of command.matchAll(ISSUE_USE)) await touch(Number(m[1]))
-      }
+      for (const n of used) await touch(n)
     } catch {
       // never block a tool call because of the display
     }
@@ -531,11 +541,13 @@ export const register: Register = on => {
     const ran = await next(e)
 
     try {
+      for (const n of used) refresh($, n)
       if (isShell && ISSUE_CREATE.test(command)) {
         const m = ISSUE_URL.exec(JSON.stringify((ran as any).result ?? ''))
         if (m) {
           const t = TITLE_ARG.exec(command)
           await touch(Number(m[1]), t ? (t[1] ?? t[2]) : undefined)
+          refresh($, Number(m[1]))
         }
       }
     } catch {
@@ -693,10 +705,9 @@ export const register: Register = on => {
       )
     }
 
-    // The main agent's own card: the crowned critter, what it does now and its last steps.
+    // The main agent's own card: the crowned critter, its model, state, tokens and turns, and its ticket.
     const mainCard = () => {
-      const steps = acts[MAIN] ?? []
-      const sprite = spriteFor(mainAgent(boss, now), steps.slice(-1)[0], now)
+      const sprite = spriteFor(mainAgent(boss, now), (acts[MAIN] ?? []).slice(-1)[0], now)
       const mine = lk[MAIN] ?? []
       const cur = mine.slice(-1)[0]
       const since = boss.turns === 0 && !boss.busy ? '' : boss.busy ? `arbeitet seit ${ago(now - boss.since)}` : `fertig vor ${ago(now - boss.since)}`
@@ -727,20 +738,6 @@ export const register: Register = on => {
           <Box flexDirection="column" flexShrink={1}>
             <Text bold color={MAIN_COLOR}>Claude</Text>
             <Text dimColor>{meta.join('  ·  ')}</Text>
-            {steps.length > 0 ? (
-              steps
-                .slice()
-                .reverse()
-                .map((s, k) => (
-                  <Text key={`step-main-${k}`} dimColor={k > 0 || !boss.busy}>
-                    {k === 0 ? '▸ ' : '  '}
-                    {s.tool}
-                    {s.detail ? `  ${clip(s.detail, 70)}` : ''}
-                  </Text>
-                ))
-            ) : (
-              <Text dimColor>Wartet auf deinen Prompt</Text>
-            )}
             {cur !== undefined && <Text color={boss.busy ? MAIN_COLOR : undefined}>🎫 {issueLine(cur)}</Text>}
           </Box>
         </Box>
