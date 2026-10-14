@@ -1,0 +1,5 @@
+{
+  "name": "eric-mods",
+  "owner": { "name": "Eric Liebrecht" },
+  "plugins": [{ "name": "agent-crew", "source": "./agent-crew" }]
+}
