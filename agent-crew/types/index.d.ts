@@ -15,6 +15,7 @@ declare module 'claude-code' {
       links: Record<string, number[]>
       tokens: Record<string, number>
       models: Record<string, string>
+      names: Record<string, string>
       flow: number
       cache: CacheStats
       tick: number

@@ -13,6 +13,8 @@ const issues = atom({ plugin: 'agent-crew', key: 'issues' } as const, {} as Reco
 const links = atom({ plugin: 'agent-crew', key: 'links' } as const, {} as Record<string, number[]>)
 const tokens = atom({ plugin: 'agent-crew', key: 'tokens' } as const, {} as Record<string, number>)
 // Model per agent id: what its spawn resolved to, then what its latest request ran on (fallbacks too).
+// Display name per agent id, handed out once and kept.
+const names = atom({ plugin: 'agent-crew', key: 'names' } as const, {} as Record<string, string>)
 const models = atom({ plugin: 'agent-crew', key: 'models' } as const, {} as Record<string, string>)
 // Prompt cache of the session: the main loop's last response, and sums over every loop.
 const cache = atom(
@@ -45,9 +47,22 @@ const hash = (s: string) => [...s].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >
 const colorOf = (id: string) => COLORS[hash(id) % COLORS.length]!
 const isLive = (a: CrewAgent) => a.status === 'running' || a.status === 'waiting' || a.status === 'pending'
 
-const TOOL_ICON: Record<string, string> = {
-  Bash: '⚡', PowerShell: '⚡', Read: '📖', Edit: '✏️', Write: '📝', Grep: '🔎', Glob: '🔎',
-  WebFetch: '🌐', WebSearch: '🌐', Agent: '🤖',
+// A slightly silly name per agent, so the crew reads like a crew and not like a list of ids.
+const NAMES = [
+  'Debug-Dieter', 'Turbo-Toni', 'Commit-Carla', 'Pixel-Paula', 'Kaffee-Klaus', 'Semikolon-Susi',
+  'Merge-Moritz', 'Lint-Lotte', 'Bash-Bärbel', 'Cache-Charlie', 'Stack-Steffi', 'Grep-Gregor',
+  'Null-Norbert', 'Async-Anni', 'Patch-Paul', 'Byte-Brigitte', 'Loop-Lukas', 'Regex-Rita',
+  'Diff-Detlef', 'Token-Tina', 'Branch-Bruno', 'Kompilier-Kurt', 'Hotfix-Heidi', 'Bit-Bernd',
+]
+// First free name from the agent's own spot in the list; numbered once all are taken.
+const pickName = (id: string, taken: Set<string>): string => {
+  const start = hash(id) % NAMES.length
+  for (let round = 1; ; round++) {
+    for (let k = 0; k < NAMES.length; k++) {
+      const n = NAMES[(start + k) % NAMES.length]! + (round > 1 ? ` ${round}` : '')
+      if (!taken.has(n)) return n
+    }
+  }
 }
 
 const detailOf = (e: any): string => {
@@ -305,6 +320,7 @@ export const register: Register = on => {
     const saved = await $.store.get('flow')
     if (typeof saved === 'number') await update($, flow, () => saved)
 
+    const named = new Set<string>()
     const known = new Map<string, number>()
     const ended = new Map<string, number>()
     $.clock.every(500, async () => {
@@ -320,6 +336,19 @@ export const register: Register = on => {
         }
       })
       const live = mapped.some(isLive)
+      if (mapped.some(a => !named.has(a.id))) {
+        for (const a of mapped) named.add(a.id)
+        await update($, names, m => {
+          const out = { ...m }
+          const taken = new Set(Object.values(out))
+          for (const a of mapped) {
+            if (out[a.id]) continue
+            out[a.id] = pickName(a.id, taken)
+            taken.add(out[a.id]!)
+          }
+          return out
+        })
+      }
       await update($, agents, () => mapped)
       if (live) await update($, frame, n => n + 1)
     })
@@ -482,6 +511,7 @@ export const register: Register = on => {
     const cs = await read($, cache)
     const ttl = await read($, cacheTtl)
     const mods = await read($, models)
+    const nm = await read($, names)
     await read($, tick)
     const { Box, Text, Button, Svg } = $.ui.resolve(e) as any
 
@@ -500,7 +530,7 @@ export const register: Register = on => {
               )}
               <Box flexDirection="column" marginLeft={1}>
                 <Button key={`open-${a.id}`} plain onPress={() => $.ui.open({ id: PANE, title: 'Agent Crew' })}>
-                  <Text bold color={colorOf(a.id)}>{clip(a.type, 16)}</Text>
+                  <Text bold color={colorOf(a.id)}>{clip(nm[a.id] ?? a.type, 18)}</Text>
                 </Button>
                 <Text dimColor>
                   {LABEL[sprite]}
@@ -529,6 +559,7 @@ export const register: Register = on => {
     const cs = await read($, cache)
     const ttl = await read($, cacheTtl)
     const mods = await read($, models)
+    const nm = await read($, names)
     await read($, tick)
     const now = await $.clock.now()
     const running = list.filter(isLive)
@@ -536,93 +567,198 @@ export const register: Register = on => {
 
     const issueLine = (n: number) => {
       const i = iss[String(n)]
-      return `#${n} ${i?.title ? clip(i.title, 60) : '…'}${i?.state ? ` [${i.state.toLowerCase()}]` : ''}`
+      const st = i?.state ? ({ OPEN: 'offen', CLOSED: 'geschlossen' } as Record<string, string>)[i.state.toUpperCase()] ?? i.state.toLowerCase() : ''
+      return `#${n} ${i?.title ? clip(i.title, 60) : '…'}${st ? ` · ${st}` : ''}`
     }
 
     const card = (a: CrewAgent) => {
       const color = colorOf(a.id)
+      const live = isLive(a)
       const last = (acts[a.id] ?? []).slice(-1)[0]
       const mine = lk[a.id] ?? []
       const cur = mine.slice(-1)[0]
       const sprite = spriteFor(a, last, now)
+      const meta = [
+        a.type,
+        mods[a.id] ? modelName(mods[a.id]) : '',
+        LABEL[sprite]!,
+        sec((a.endedAt ?? now) - a.startedAt),
+        `${kTok(tok[a.id] ?? 0)} Tokens`,
+      ].filter(Boolean)
       return (
-        <Box key={`card-${a.id}`} flexDirection="row" marginBottom={1}>
-          <Box marginRight={2}>
+        <Box
+          key={`card-${a.id}`}
+          flexDirection="row"
+          alignItems="center"
+          borderStyle="round"
+          borderColor={live ? color : undefined}
+          borderDimColor={!live}
+          paddingX={2}
+          paddingY={1}
+          marginTop={1}
+        >
+          <Box marginRight={3}>
             {Svg ? (
-              <Svg source={SPRITES[sprite]![t % 2]!} alt={LABEL[sprite]!} width={96} height={80} />
+              <Svg source={SPRITES[sprite]![t % 2]!} alt={LABEL[sprite]!} width={72} height={60} />
             ) : (
               <Text>{ALT[sprite]}</Text>
             )}
           </Box>
-          <Box flexDirection="column">
-            <Text bold color={color}>
-              {a.type}
-              {mods[a.id] && <Text color="cyan">  🧠 {modelName(mods[a.id])}</Text>}
-              <Text dimColor>  {LABEL[sprite]} · {sec((a.endedAt ?? now) - a.startedAt)} · {kTok(tok[a.id] ?? 0)} Tokens</Text>
+          <Box flexDirection="column" flexShrink={1} gap="xs">
+            <Text bold color={live ? color : undefined} dimColor={!live}>
+              {nm[a.id] ?? a.type}
             </Text>
-            <Text dimColor>{(a.description || '').slice(0, 60)}</Text>
+            <Text dimColor>{meta.join('  ·  ')}</Text>
+            {a.description ? <Text dimColor={!live}>{clip(a.description, 80)}</Text> : null}
             {cur !== undefined && (
-              <Text color={color} bold>
+              <Text color={live ? color : undefined} dimColor={!live}>
                 🎫 {issueLine(cur)}
               </Text>
             )}
             {mine.slice(0, -1).map(n => (
               <Text dimColor>   auch: {issueLine(n)}</Text>
             ))}
-            <Text color={a.status === 'running' ? color : undefined} dimColor={a.status !== 'running'}>
-              {last ? `${TOOL_ICON[last.tool] ?? '🔧'} ${last.tool} ${clip(last.detail, 70)}` : '(noch kein Befehl)'}
-            </Text>
           </Box>
         </Box>
       )
     }
 
     const issueNumbers = Object.keys(iss).map(Number).sort((a, b) => b - a).slice(0, 8)
-    const workers = (n: number) =>
-      list.filter(a => (lk[a.id] ?? []).includes(n) && isLive(a)).map(a => a.type)
+    const workersOf = (n: number) => list.filter(a => (lk[a.id] ?? []).includes(n) && isLive(a))
+
+    // A section: a clear heading with a short summary to its right, then its content.
+    const section = (key: string, title: string, meta: string, body: any, first = false) => (
+      <Box key={`sec-${key}`} flexDirection="column" marginTop={first ? 0 : 2}>
+        <Box flexDirection="row" alignItems="center" marginBottom={1}>
+          <Text bold color="cyan">▍</Text>
+          <Box marginLeft={1}>
+            <Text bold>{title}</Text>
+          </Box>
+          {meta ? (
+            <Box marginLeft={3}>
+              <Text dimColor>{meta}</Text>
+            </Box>
+          ) : null}
+        </Box>
+        {body}
+      </Box>
+    )
+    // The same rounded frame the agent cards use, for the other blocks.
+    const panel = (key: string, children: any, color?: string) => (
+      <Box
+        key={`panel-${key}`}
+        flexDirection="column"
+        borderStyle="round"
+        borderColor={color}
+        borderDimColor={!color}
+        paddingX={2}
+        paddingY={1}
+      >
+        {children}
+      </Box>
+    )
+
+    const STATE: Record<string, { label: string; color: string }> = {
+      OPEN: { label: '● offen', color: 'green' },
+      CLOSED: { label: '● geschlossen', color: 'magenta' },
+    }
+    const issueCard = (n: number) => {
+      const i = iss[String(n)]
+      const w = workersOf(n)
+      const accent = w.length > 0 ? colorOf(w[0]!.id) : undefined
+      const st = STATE[(i?.state ?? '').toUpperCase()]
+      return (
+        <Box
+          key={`issue-${n}`}
+          flexDirection="column"
+          borderStyle="round"
+          borderColor={accent}
+          borderDimColor={!accent}
+          paddingX={2}
+          paddingY={1}
+          marginTop={1}
+          gap="xs"
+        >
+          <Box flexDirection="row">
+            <Text bold color={accent} dimColor={!accent}>#{n}</Text>
+            {st && (
+              <Box marginLeft={3}>
+                <Text color={st.color}>{st.label}</Text>
+              </Box>
+            )}
+          </Box>
+          <Text dimColor={!accent}>{i?.title ? clip(i.title, 90) : 'Titel wird geladen …'}</Text>
+          {w.length > 0 ? (
+            <Text dimColor>
+              in Arbeit bei{' '}
+              {w.map((a, k) => (
+                <Text key={`w-${n}-${a.id}`} bold color={colorOf(a.id)}>
+                  {k > 0 ? ', ' : ''}
+                  {nm[a.id] ?? a.type}
+                </Text>
+              ))}
+            </Text>
+          ) : (
+            <Text dimColor>gerade niemand dran</Text>
+          )}
+        </Box>
+      )
+    }
+
+    const flowMeta = active >= STEPS.length ? 'alles erledigt' : `Schritt ${active + 1} von ${STEPS.length}`
+    const crewMeta = [`${running.length} aktiv`, done.length > 0 ? `${done.length} fertig` : ''].filter(Boolean).join(' · ')
+    const busyIssues = issueNumbers.filter(n => workersOf(n).length > 0).length
 
     return (
-      <Box flexDirection="column">
-        <Text bold>Ablauf</Text>
-        {stepper($, Box, Text, Button, Svg, active, t % 2)}
-        <Button
-          key="reset"
-          plain
-          dimColor
-          onPress={async () => {
-            await update($, flow, () => 0)
-            await $.store.set('flow', 0)
-          }}
-        >
-          ↺ zurücksetzen
-        </Button>
-        <Box marginTop={1} flexDirection="column">
-          <Text bold>Session-Cache</Text>
-          {cacheLine(Box, Text, Svg, cs, now, ttl, true)}
-        </Box>
-        <Box marginTop={1} flexDirection="column">
-          <Text bold>
-            Agent Crew <Text dimColor>({running.length} aktiv)</Text>
-          </Text>
-          {list.length === 0 && <Text dimColor>Keine Sub-Agents. Es ist ruhig im Bau...</Text>}
-          {running.map(card)}
-          {done.length > 0 && <Text dimColor>Zuletzt fertig:</Text>}
-          {done.map(card)}
-        </Box>
-        {issueNumbers.length > 0 && (
-          <Box flexDirection="column" marginTop={1}>
-            <Text bold>Issues</Text>
-            {issueNumbers.map(n => {
-              const w = workers(n)
-              return (
-                <Text dimColor={w.length === 0}>
-                  🎫 {issueLine(n)}
-                  {w.length > 0 ? `  ← ${w.join(', ')}` : ''}
-                </Text>
-              )
-            })}
-          </Box>
+      <Box flexDirection="column" paddingX={1} paddingY={1}>
+        {section(
+          'flow',
+          'Ablauf',
+          flowMeta,
+          panel(
+            'flow',
+            <Box flexDirection="column">
+              {stepper($, Box, Text, Button, Svg, active, t % 2)}
+              <Box marginTop={1}>
+                <Button
+                  key="reset"
+                  plain
+                  dimColor
+                  onPress={async () => {
+                    await update($, flow, () => 0)
+                    await $.store.set('flow', 0)
+                  }}
+                >
+                  ↺ zurücksetzen
+                </Button>
+              </Box>
+            </Box>,
+          ),
+          true,
         )}
+        {section('cache', 'Session-Cache', '', panel('cache', cacheLine(Box, Text, Svg, cs, now, ttl, true)))}
+        {section(
+          'crew',
+          'Agenten',
+          crewMeta,
+          <Box flexDirection="column">
+            {list.length === 0 && panel('empty', <Text dimColor>Keine Sub-Agents. Es ist ruhig im Bau …</Text>)}
+            {running.map(card)}
+            {done.length > 0 && (
+              <Box marginTop={1}>
+                <Text dimColor>Zuletzt fertig</Text>
+              </Box>
+            )}
+            {done.map(card)}
+          </Box>,
+        )}
+        {issueNumbers.length > 0 &&
+          section(
+            'issues',
+            'Issues',
+            `${issueNumbers.length} verknüpft${busyIssues > 0 ? ` · ${busyIssues} in Arbeit` : ''}`,
+            <Box flexDirection="column">{issueNumbers.map(issueCard)}</Box>,
+          )}
       </Box>
     )
   })
