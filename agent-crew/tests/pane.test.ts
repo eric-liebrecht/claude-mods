@@ -51,3 +51,53 @@ test('linked issues get their own card with state and the agent working on them'
     await ui.unmount()
   }
 })
+
+// GitHub's side: issue 105 is open until a close runs, here or elsewhere.
+const github = (on: any) => {
+  const gh = { state: 'OPEN' }
+  on('process.run', () => ({ value: { exitCode: 0, stdout: JSON.stringify({ title: 'Never overwrite a reply', state: gh.state }), stderr: '' } }) as any)
+  on('tool.call', (_$: any, e: any) => {
+    if (/gh issue close/.test(e.command ?? '')) gh.state = 'CLOSED'
+    return { result: 'ok' } as any
+  })
+  return gh
+}
+const startCrew = async ($: any, on: any) => {
+  on('agent.list', () => ({ value: [] }) as any)
+  on('session.start', (_$: any, e: any) => ({ cwd: e.cwd }))
+  on('command.register', (_$: any, e: any) => ({ value: { command: e.name } }) as any)
+  on('ui.open', () => ({ value: { isPlaced: true } }) as any)
+  mock.store(on)
+  await $.session.start({ cwd: '/w', surface: 'terminal', isInteractive: true })
+}
+const issueState = async ($: any) => {
+  const ui = await $.ui.mount({ plugin: 'agent-crew', surface: 'terminal', component: 'Pane', requestId: 'agent-crew', props: {} as any })
+  const closed = await ui.find({ type: 'Text', text: /^● geschlossen$/ })
+  const open = await ui.find({ type: 'Text', text: /^● offen$/ })
+  await ui.unmount()
+  return closed ? 'closed' : open ? 'open' : 'none'
+}
+
+test('an issue closed with gh shows as closed', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  github(on)
+  await startCrew($, on)
+  await $.tool.call({ tool: 'Bash', command: 'gh issue view 105' } as any)
+  await clock.advance(600)
+  expect(await issueState($)).toBe('open')
+  await $.tool.call({ tool: 'Bash', command: 'gh issue close 105 --comment "done"' } as any)
+  await clock.advance(600)
+  expect(await issueState($)).toBe('closed')
+})
+
+test('an issue closed elsewhere shows as closed within a minute', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  const gh = github(on)
+  await startCrew($, on)
+  await $.tool.call({ tool: 'Bash', command: 'gh issue view 105' } as any)
+  await clock.advance(600)
+  expect(await issueState($)).toBe('open')
+  gh.state = 'CLOSED'
+  await clock.advance(60_000)
+  expect(await issueState($)).toBe('closed')
+})

@@ -1,8 +1,8 @@
 import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
-import type { Activity, CacheStats, CrewAgent, Issue } from '../types'
-import { SPRITES } from './sprites'
+import type { Activity, CacheStats, CrewAgent, Issue, MainState } from '../types'
+import { BOSS, SPRITES } from './sprites'
 
 const PANE = 'agent-crew'
 const agents = atom({ plugin: 'agent-crew', key: 'agents' } as const, [] as CrewAgent[])
@@ -28,6 +28,12 @@ const cacheTtl = atom({ plugin: 'agent-crew', key: 'cacheTtlMs' } as const, 3_60
 const tick = atom({ plugin: 'agent-crew', key: 'tick' } as const, 0)
 // The engineering flow: index of the active step (STEPS.length = everything done).
 const flow = atom({ plugin: 'agent-crew', key: 'flow' } as const, 0)
+// The main agent, kept apart from the crew: busy while a turn of its own runs.
+const main = atom({ plugin: 'agent-crew', key: 'main' } as const, { busy: false, since: 0, turns: 0 } as MainState)
+const MAIN = 'main'
+const MAIN_COLOR = 'yellow'
+// Busy as a plain flag too, for the frame clock, which reads no atoms.
+let mainBusy = false
 
 type Step = { label: string; names: string[]; command: string }
 const STEPS: Step[] = [
@@ -44,7 +50,7 @@ const stepOf = (text: string): number => {
 
 const COLORS = ['magenta', 'cyan', 'yellow', 'green', 'red', 'blue'] as const
 const hash = (s: string) => [...s].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7)
-const colorOf = (id: string) => COLORS[hash(id) % COLORS.length]!
+const colorOf = (id: string) => (id === MAIN ? MAIN_COLOR : COLORS[hash(id) % COLORS.length]!)
 const isLive = (a: CrewAgent) => a.status === 'running' || a.status === 'waiting' || a.status === 'pending'
 
 // A slightly silly name per agent, so the crew reads like a crew and not like a list of ids.
@@ -110,6 +116,16 @@ const spriteFor = (a: CrewAgent, last: Activity | undefined, now: number): strin
       return 'think'
   }
 }
+
+// The main agent as a crew member, so it picks its critter the same way: working while its turn
+// runs, cheering for a moment after, then dozing until the next prompt.
+const mainAgent = (m: MainState, now: number): CrewAgent => ({
+  id: MAIN,
+  type: 'Claude',
+  description: '',
+  status: m.busy ? 'running' : m.turns > 0 && now - m.since < 8000 ? 'completed' : 'idle',
+  startedAt: m.since,
+})
 
 const ALT: Record<string, string> = {
   idle: '💤', think: '💭', read: '📖', search: '🔎', edit: '✏️', bash: '⚡', test: '🏋️',
@@ -222,28 +238,31 @@ function nodeSvg(i: number, active: number, pulse: number): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 40">${top}${bottom}${circle}</svg>`
 }
 
-// Horizontal variant: circle at the left of its cell, line running to the right edge.
+// Horizontal variant: circle in the middle of its cell, a line half to each neighbour,
+// so the row is symmetric and centres as a whole.
 const CELL = 150
 function nodeSvgH(i: number, active: number, pulse: number): string {
   const isDone = i < active
   const isActive = i === active
-  const line =
+  const c = CELL / 2
+  const left = i === 0 ? '' : `<rect x="0" y="8" width="${c - 8}" height="2" fill="${i <= active ? GREEN : GRAY}"/>`
+  const right =
     i === STEPS.length - 1
       ? ''
-      : `<rect x="17" y="8" width="${CELL - 17}" height="2" fill="${i < active ? GREEN : GRAY}"/>`
+      : `<rect x="${c + 8}" y="8" width="${c - 8}" height="2" fill="${i < active ? GREEN : GRAY}"/>`
   let circle: string
   if (isDone) {
     circle =
-      `<circle cx="9" cy="9" r="7" fill="${GREEN}"/>` +
-      `<path d="M5.8 9.2 L8.2 11.6 L12.4 6.6" stroke="#0d1117" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`
+      `<circle cx="${c}" cy="9" r="7" fill="${GREEN}"/>` +
+      `<path d="M${c - 3.2} 9.2 L${c - 0.8} 11.6 L${c + 3.4} 6.6" stroke="#0d1117" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`
   } else if (isActive) {
     circle =
-      `<circle cx="9" cy="9" r="7" fill="#0d1117" stroke="${CYAN}" stroke-width="2"/>` +
-      `<circle cx="9" cy="9" r="${pulse ? 4 : 3}" fill="${CYAN}"/>`
+      `<circle cx="${c}" cy="9" r="7" fill="#0d1117" stroke="${CYAN}" stroke-width="2"/>` +
+      `<circle cx="${c}" cy="9" r="${pulse ? 4 : 3}" fill="${CYAN}"/>`
   } else {
-    circle = `<circle cx="9" cy="9" r="6" fill="none" stroke="${GRAY}" stroke-width="2"/>`
+    circle = `<circle cx="${c}" cy="9" r="6" fill="none" stroke="${GRAY}" stroke-width="2"/>`
   }
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${CELL} 18">${line}${circle}</svg>`
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${CELL} 18">${left}${right}${circle}</svg>`
 }
 
 // The flow as a vertical timeline: done, active, open. A press writes the skill into the prompt.
@@ -252,12 +271,13 @@ function stepper(
 ) {
   if (horizontal) {
     return (
+      <Box flexDirection="column" alignItems="center">
       <Box flexDirection="row" justifyContent="center">
         {STEPS.map((st, i) => {
           const isDone = i < active
           const isActive = i === active
           return (
-            <Box key={`step-${i}`} flexDirection="column" alignItems="flex-start">
+            <Box key={`step-${i}`} flexDirection="column" alignItems="center">
               {Svg ? (
                 <Svg source={nodeSvgH(i, active, pulse)} alt={isDone ? 'erledigt' : isActive ? 'aktiv' : 'offen'} width={CELL} height={18} />
               ) : (
@@ -274,7 +294,8 @@ function stepper(
             </Box>
           )
         })}
-        {active >= STEPS.length && <Text color="green" bold> Alles erledigt</Text>}
+      </Box>
+      {active >= STEPS.length && <Text color="green" bold>Alles erledigt</Text>}
       </Box>
     )
   }
@@ -290,14 +311,14 @@ function stepper(
             ) : (
               <Text color={isDone ? 'green' : isActive ? 'cyan' : undefined}>{isDone ? '✓' : isActive ? '●' : '○'}</Text>
             )}
-            <Box flexDirection="column" marginLeft={2}>
+            <Box flexDirection="row" alignItems="center" marginLeft={2}>
               <Button key={`btn-${i}`} plain onPress={() => $.prompt.fill({ text: `${st.command} `, mode: 'replace' })}>
-                <Text color={isDone ? 'green' : isActive ? 'cyan' : undefined} bold={isActive} dimColor={!isDone && !isActive}>
+                <Text color={isDone ? 'green' : isActive ? 'cyan' : undefined} bold dimColor={!isDone && !isActive}>
                   {st.label}
                 </Text>
               </Button>
-              <Text dimColor hover={{ dimColor: false, color: 'cyan' }}>
-                {st.command.replace('/mattpocock-skills:', '/')}
+              <Text dimColor italic hover={{ dimColor: false, color: 'cyan' }}>
+                {'  '}{st.command.replace('/mattpocock-skills:', '/')}
               </Text>
             </Box>
           </Box>
@@ -308,14 +329,38 @@ function stepper(
   )
 }
 
-export const register: Register = on => {
-  const fetching = new Set<number>()
+// Title and state of an issue as GitHub has them now; one lookup per issue at a time.
+const fetching = new Set<number>()
+function refresh($: any, n: number) {
+  if (fetching.has(n)) return
+  fetching.add(n)
+  void $.process
+    .run(['gh', 'issue', 'view', String(n), '--json', 'title,state'], { timeoutMs: 15000 })
+    .then(async (r: any) => {
+      if (r.exitCode !== 0) return
+      const j = JSON.parse(r.stdout) as { title?: string; state?: string }
+      await update($, issues, m => ({
+        ...m,
+        [n]: { number: n, title: j.title ?? m[n]?.title ?? '', state: j.state ?? m[n]?.state ?? '' },
+      }))
+    })
+    .catch(() => {})
+    .finally(() => fetching.delete(n))
+}
+// Every issue shown: closed or reopened elsewhere (on GitHub, by a merged PR) shows here too.
+async function refreshAll($: any) {
+  const known = ((await $.state.get({ plugin: 'agent-crew', key: 'issues' })).value ?? {}) as Record<string, Issue>
+  for (const n of Object.keys(known).map(Number).sort((a, b) => b - a).slice(0, 8)) refresh($, n)
+}
 
+export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({ name: 'crew', description: 'Show running sub-agents as pixel critters' })
     void $.ui.open({ id: PANE, title: 'Agent Crew' })
 
     $.clock.every(10000, () => update($, tick, n => n + 1))
+    void refreshAll($).catch(() => {})
+    $.clock.every(60000, () => refreshAll($).catch(() => {}))
 
     const saved = await $.store.get('flow')
     if (typeof saved === 'number') await update($, flow, () => saved)
@@ -355,7 +400,7 @@ export const register: Register = on => {
           // shown by type until a name sticks
         }
       }
-      if (live) await update($, frame, n => n + 1)
+      if (live || mainBusy) await update($, frame, n => n + 1)
     })
 
     return next(e)
@@ -388,8 +433,8 @@ export const register: Register = on => {
 
   on('turn.step', async function* ($, e, next) {
     try {
-      const id = (e as any).agentId as string | undefined
-      if (id && e.model) await update($, models, m => (m[id] === e.model ? m : { ...m, [id]: e.model }))
+      const id = ((e as any).agentId as string | undefined) ?? MAIN
+      if (e.model) await update($, models, m => (m[id] === e.model ? m : { ...m, [id]: e.model }))
     } catch {
       // display only
     }
@@ -401,10 +446,29 @@ export const register: Register = on => {
     return { text: 'Agent Crew pane opened.' }
   })
 
+  // A turn of the main agent starts: its critter gets to work.
+  on('turn.start', async ($, e, next) => {
+    try {
+      if (!(e as any).agentId) {
+        mainBusy = true
+        const at = await $.clock.now()
+        await update($, main, m => ({ ...m, busy: true, since: at }))
+      }
+    } catch {
+      // display only
+    }
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
   // Tokens per agent, summed over its turns.
   on('turn.complete', async ($, e, next) => {
     const ran = await next(e)
     try {
+      if (!(e as any).agentId) {
+        mainBusy = false
+        const at = await $.clock.now()
+        await update($, main, m => ({ busy: false, since: at, turns: m.turns + 1 }))
+      }
       if (implementing && !(e as any).agentId) {
         implementing = false
         await update($, flow, () => STEPS.length)
@@ -421,9 +485,10 @@ export const register: Register = on => {
           input: c.input + u.input_tokens,
         }))
       }
-      if (id && u) {
+      if (u) {
+        const who = id ?? MAIN
         const total = u.input_tokens + u.output_tokens + u.cache_creation_input_tokens
-        await update($, tokens, m => ({ ...m, [id]: (m[id] ?? 0) + total }))
+        await update($, tokens, m => ({ ...m, [who]: (m[who] ?? 0) + total }))
       }
     } catch {
       // display only
@@ -447,7 +512,8 @@ export const register: Register = on => {
     const command = String((e as any).command ?? '')
     const isShell = e.tool === 'Bash' || e.tool === 'PowerShell'
 
-    // Remember an issue (and look up its title once) and link it to the agent working on it.
+    // Remember an issue and link it to the agent working on it; its state is looked up once the
+    // command has run, so a close or reopen shows as what it did.
     const touch = async (n: number, title?: string) => {
       await update($, links, m => {
         const rest = (m[who] ?? []).filter(x => x !== n)
@@ -457,21 +523,8 @@ export const register: Register = on => {
         ...m,
         [n]: { number: n, title: title ?? m[n]?.title ?? '', state: m[n]?.state ?? '' },
       }))
-      if (fetching.has(n)) return
-      fetching.add(n)
-      void $.process
-        .run(['gh', 'issue', 'view', String(n), '--json', 'title,state'], { timeoutMs: 15000 })
-        .then(async r => {
-          if (r.exitCode !== 0) return
-          const j = JSON.parse(r.stdout) as { title?: string; state?: string }
-          await update($, issues, m => ({
-            ...m,
-            [n]: { number: n, title: j.title ?? m[n]?.title ?? '', state: j.state ?? '' },
-          }))
-        })
-        .catch(() => {})
-        .finally(() => fetching.delete(n))
     }
+    const used = isShell ? [...command.matchAll(ISSUE_USE)].map(m => Number(m[1])) : []
 
     try {
       if (e.tool === 'Skill' && who === 'main') {
@@ -480,9 +533,7 @@ export const register: Register = on => {
       }
       const entry: Activity = { tool: e.tool, detail: detailOf(e), at: await $.clock.now() }
       await update($, activity, m => ({ ...m, [who]: [...(m[who] ?? []), entry].slice(-3) }))
-      if (isShell) {
-        for (const m of command.matchAll(ISSUE_USE)) await touch(Number(m[1]))
-      }
+      for (const n of used) await touch(n)
     } catch {
       // never block a tool call because of the display
     }
@@ -490,11 +541,13 @@ export const register: Register = on => {
     const ran = await next(e)
 
     try {
+      for (const n of used) refresh($, n)
       if (isShell && ISSUE_CREATE.test(command)) {
         const m = ISSUE_URL.exec(JSON.stringify((ran as any).result ?? ''))
         if (m) {
           const t = TITLE_ARG.exec(command)
           await touch(Number(m[1]), t ? (t[1] ?? t[2]) : undefined)
+          refresh($, Number(m[1]))
         }
       }
     } catch {
@@ -517,13 +570,37 @@ export const register: Register = on => {
     const ttl = await read($, cacheTtl)
     const mods = await read($, models)
     const nm = await read($, names)
+    const boss = await read($, main)
     await read($, tick)
     const { Box, Text, Button, Svg } = $.ui.resolve(e) as any
+    const bossSprite = spriteFor(mainAgent(boss, now), (acts[MAIN] ?? []).slice(-1)[0], now)
 
     return (
       <Box flexDirection="column" alignItems="center">
         {stepper($, Box, Text, Button, Svg, active, t % 2, true)}
         <Box flexDirection="row" justifyContent="flex-start" alignSelf="flex-start" marginTop={1}>
+        <Box key="agent-main" flexDirection="row">
+          {Svg ? (
+            <Svg source={BOSS[bossSprite]![t % 2]!} alt={`Hauptagent ${LABEL[bossSprite]!}`} width={36} height={30} />
+          ) : (
+            <Text>👑{ALT[bossSprite]} </Text>
+          )}
+          <Box flexDirection="column" marginLeft={1}>
+            <Button key="open-main" plain onPress={() => $.ui.open({ id: PANE, title: 'Agent Crew' })}>
+              <Text bold color={MAIN_COLOR}>Claude</Text>
+            </Button>
+            <Text dimColor>
+              {LABEL[bossSprite]}
+              {boss.busy ? ` · ${sec(now - boss.since)}` : ''}
+              {mods[MAIN] ? ` · ${modelName(mods[MAIN])}` : ''}
+            </Text>
+          </Box>
+        </Box>
+        {list.length > 0 && (
+          <Box marginX={3}>
+            <Text dimColor>│</Text>
+          </Box>
+        )}
         {list.slice(0, 4).map(a => {
           const sprite = spriteFor(a, (acts[a.id] ?? []).slice(-1)[0], now)
           return (
@@ -565,6 +642,7 @@ export const register: Register = on => {
     const ttl = await read($, cacheTtl)
     const mods = await read($, models)
     const nm = await read($, names)
+    const boss = await read($, main)
     await read($, tick)
     const now = await $.clock.now()
     const running = list.filter(isLive)
@@ -627,8 +705,50 @@ export const register: Register = on => {
       )
     }
 
+    // The main agent's own card: the crowned critter, its model, state, tokens and turns, and its ticket.
+    const mainCard = () => {
+      const sprite = spriteFor(mainAgent(boss, now), (acts[MAIN] ?? []).slice(-1)[0], now)
+      const mine = lk[MAIN] ?? []
+      const cur = mine.slice(-1)[0]
+      const since = boss.turns === 0 && !boss.busy ? '' : boss.busy ? `arbeitet seit ${ago(now - boss.since)}` : `fertig vor ${ago(now - boss.since)}`
+      const meta = [
+        mods[MAIN] ? modelName(mods[MAIN]) : '',
+        LABEL[sprite]!,
+        since,
+        tok[MAIN] ? `${kTok(tok[MAIN]!)} Tokens` : '',
+        boss.turns > 0 ? `${boss.turns} ${boss.turns === 1 ? 'Turn' : 'Turns'}` : '',
+      ].filter(Boolean)
+      return (
+        <Box
+          key="card-main"
+          flexDirection="row"
+          alignItems="center"
+          borderStyle="round"
+          borderColor={boss.busy ? MAIN_COLOR : 'gray'}
+          paddingX={2}
+          paddingY={1}
+        >
+          <Box marginRight={3}>
+            {Svg ? (
+              <Svg source={BOSS[sprite]![t % 2]!} alt={`Hauptagent ${LABEL[sprite]!}`} width={72} height={60} />
+            ) : (
+              <Text>👑{ALT[sprite]}</Text>
+            )}
+          </Box>
+          <Box flexDirection="column" flexShrink={1}>
+            <Text bold color={MAIN_COLOR}>Claude</Text>
+            <Text dimColor>{meta.join('  ·  ')}</Text>
+            {cur !== undefined && <Text color={boss.busy ? MAIN_COLOR : undefined}>🎫 {issueLine(cur)}</Text>}
+          </Box>
+        </Box>
+      )
+    }
+
     const issueNumbers = Object.keys(iss).map(Number).sort((a, b) => b - a).slice(0, 8)
-    const workersOf = (n: number) => list.filter(a => (lk[a.id] ?? []).includes(n) && isLive(a))
+    const workersOf = (n: number) => [
+      ...(boss.busy && (lk[MAIN] ?? []).includes(n) ? [mainAgent(boss, now)] : []),
+      ...list.filter(a => (lk[a.id] ?? []).includes(n) && isLive(a)),
+    ]
 
     // A section: a clear heading with a short summary to its right, then its content.
     const section = (key: string, title: string, meta: string, body: any, first = false) => (
@@ -737,6 +857,7 @@ export const register: Register = on => {
           true,
         )}
         {section('cache', 'Session-Cache', '', panel('cache', cacheLine(Box, Text, Svg, cs, now, ttl, true)))}
+        {section('main', 'Hauptagent', boss.busy ? 'arbeitet' : 'bereit', mainCard())}
         {section(
           'crew',
           'Agenten',
