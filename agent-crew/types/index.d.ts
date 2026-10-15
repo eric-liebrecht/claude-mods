@@ -19,6 +19,8 @@ declare module 'claude-code' {
       models: Record<string, string>
       names: Record<string, string>
       flow: number
+      lastRetro: number
+      retroRan: boolean
       cache: CacheStats
       tick: number
       cacheTtlMs: number

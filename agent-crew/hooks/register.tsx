@@ -44,6 +44,28 @@ const STEPS: Step[] = [
   { label: 'Retro', names: ['retro'], command: '/retro' },
   { label: 'PR', names: ['pr'], command: '/pr' },
 ]
+// The retro is no step of every round: it is due once a week, and in between it is optional.
+const RETRO = STEPS.findIndex(st => st.command === '/retro')
+const RETRO_EVERY = 7 * 86_400_000
+// When the last retro ran (0 = never), kept across sessions.
+const lastRetro = atom({ plugin: 'agent-crew', key: 'lastRetro' } as const, 0)
+// Whether the current round of the flow ran its retro.
+const retroRan = atom({ plugin: 'agent-crew', key: 'retroRan' } as const, false)
+type RetroState = { due: boolean; ran: boolean; next: number }
+const retroOf = (last: number, ran: boolean, now: number): RetroState => ({
+  due: now - last >= RETRO_EVERY,
+  ran,
+  next: last + RETRO_EVERY,
+})
+// Optional in this round: not due and not run.
+const isSkippable = (i: number, r: RetroState) => i === RETRO && !r.due && !r.ran
+const dayOf = (ms: number) => {
+  const d = new Date(ms)
+  return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.`
+}
+const retroNote = (i: number, r: RetroState) =>
+  i !== RETRO || r.ran ? '' : r.due ? 'fällig' : `optional · ab ${dayOf(r.next)}`
+
 const stepOf = (text: string): number => {
   const m = /(?:^|<command-name>)[ ]*[/](?:[a-z-]+:)?([a-z-]+)/.exec(text)
   if (!m) return -1
@@ -155,6 +177,14 @@ const kTok = (n: number) => (n >= 1_000_000 ? `${(n / 1e6).toFixed(1)}M` : n >= 
 let implementing = false
 async function startStep($: any, i: number) {
   implementing = i === STEPS.length - 1
+  if (i === RETRO) {
+    const at = await $.clock.now()
+    await update($, lastRetro, () => at)
+    await $.store.set('lastRetro', at)
+    await update($, retroRan, () => true)
+  } else if (i < RETRO) {
+    await update($, retroRan, () => false)
+  }
   await update($, flow, () => i)
   await $.store.set('flow', i)
 }
@@ -219,14 +249,18 @@ function cacheLine(Box: any, Text: any, Svg: any, c: CacheStats, now: number, tt
 const GREEN = '#3ddc84'
 const CYAN = '#4cc9f0'
 const GRAY = '#4a4f5c'
-function nodeSvg(i: number, active: number, pulse: number): string {
+function nodeSvg(i: number, active: number, pulse: number, optional = false): string {
   const isDone = i < active
   const isActive = i === active
   const top = i === 0 ? '' : `<rect x="7" y="0" width="2" height="13" fill="${i <= active ? GREEN : GRAY}"/>`
   const bottom =
     i === STEPS.length - 1 ? '' : `<rect x="7" y="27" width="2" height="13" fill="${i < active ? GREEN : GRAY}"/>`
   let circle: string
-  if (isDone) {
+  if (optional) {
+    circle =
+      `<circle cx="8" cy="20" r="6" fill="#0d1117" stroke="${GRAY}" stroke-width="2" stroke-dasharray="3 2"/>` +
+      (isDone ? `<rect x="5" y="19" width="6" height="2" fill="${GRAY}"/>` : '')
+  } else if (isDone) {
     circle =
       `<circle cx="8" cy="20" r="7" fill="${GREEN}"/>` +
       `<path d="M4.8 20.2 L7.2 22.6 L11.4 17.6" stroke="#0d1117" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`
@@ -243,7 +277,7 @@ function nodeSvg(i: number, active: number, pulse: number): string {
 // Horizontal variant: circle in the middle of its cell, a line half to each neighbour,
 // so the row is symmetric and centres as a whole.
 const CELL = 120
-function nodeSvgH(i: number, active: number, pulse: number): string {
+function nodeSvgH(i: number, active: number, pulse: number, optional = false): string {
   const isDone = i < active
   const isActive = i === active
   const c = CELL / 2
@@ -253,7 +287,11 @@ function nodeSvgH(i: number, active: number, pulse: number): string {
       ? ''
       : `<rect x="${c + 8}" y="8" width="${c - 8}" height="2" fill="${i < active ? GREEN : GRAY}"/>`
   let circle: string
-  if (isDone) {
+  if (optional) {
+    circle =
+      `<circle cx="${c}" cy="9" r="6" fill="#0d1117" stroke="${GRAY}" stroke-width="2" stroke-dasharray="3 2"/>` +
+      (isDone ? `<rect x="${c - 3}" y="8" width="6" height="2" fill="${GRAY}"/>` : '')
+  } else if (isDone) {
     circle =
       `<circle cx="${c}" cy="9" r="7" fill="${GREEN}"/>` +
       `<path d="M${c - 3.2} 9.2 L${c - 0.8} 11.6 L${c + 3.4} 6.6" stroke="#0d1117" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`
@@ -269,21 +307,29 @@ function nodeSvgH(i: number, active: number, pulse: number): string {
 
 // The flow as a vertical timeline: done, active, open. A press writes the skill into the prompt.
 function stepper(
-  $: any, Box: any, Text: any, Button: any, Svg: any, active: number, pulse: number, horizontal = false,
+  $: any, Box: any, Text: any, Button: any, Svg: any, active: number, pulse: number, retro: RetroState,
+  horizontal = false,
 ) {
+  // A skipped retro shows as skipped, not as done.
+  const stateOf = (i: number) => {
+    const optional = isSkippable(i, retro)
+    const isDone = i < active && !optional
+    const isActive = i === active
+    return { optional, isDone, isActive, alt: optional ? (i < active ? 'übersprungen' : 'optional') : isDone ? 'erledigt' : isActive ? 'aktiv' : 'offen' }
+  }
   if (horizontal) {
     return (
       <Box flexDirection="column" alignItems="center">
       <Box flexDirection="row" justifyContent="center">
         {STEPS.map((st, i) => {
-          const isDone = i < active
-          const isActive = i === active
+          const { optional, isDone, isActive, alt } = stateOf(i)
+          const note = retroNote(i, retro)
           return (
             <Box key={`step-${i}`} flexDirection="column" alignItems="center">
               {Svg ? (
-                <Svg source={nodeSvgH(i, active, pulse)} alt={isDone ? 'erledigt' : isActive ? 'aktiv' : 'offen'} width={CELL} height={18} />
+                <Svg source={nodeSvgH(i, active, pulse, optional)} alt={alt} width={CELL} height={18} />
               ) : (
-                <Text color={isDone ? 'green' : isActive ? 'cyan' : undefined}>{isDone ? '✓' : isActive ? '●' : '○'}</Text>
+                <Text color={isDone ? 'green' : isActive ? 'cyan' : undefined}>{optional ? '◌' : isDone ? '✓' : isActive ? '●' : '○'}</Text>
               )}
               <Button key={`btn-${i}`} plain onPress={() => $.prompt.fill({ text: `${st.command} `, mode: 'replace' })}>
                 <Text color={isDone ? 'green' : isActive ? 'cyan' : undefined} bold={isActive} dimColor={!isDone && !isActive}>
@@ -293,6 +339,7 @@ function stepper(
               <Text dimColor hover={{ dimColor: false, color: 'cyan' }}>
                 {st.command.replace('/mattpocock-skills:', '/')}
               </Text>
+              {note && <Text dimColor={!retro.due} color={retro.due ? 'yellow' : undefined}>{note}</Text>}
             </Box>
           )
         })}
@@ -304,14 +351,14 @@ function stepper(
   return (
     <Box flexDirection="column">
       {STEPS.map((st, i) => {
-        const isDone = i < active
-        const isActive = i === active
+        const { optional, isDone, isActive, alt } = stateOf(i)
+        const note = retroNote(i, retro)
         return (
           <Box key={`step-${i}`} flexDirection="row">
             {Svg ? (
-              <Svg source={nodeSvg(i, active, pulse)} alt={isDone ? 'erledigt' : isActive ? 'aktiv' : 'offen'} width={16} height={40} />
+              <Svg source={nodeSvg(i, active, pulse, optional)} alt={alt} width={16} height={40} />
             ) : (
-              <Text color={isDone ? 'green' : isActive ? 'cyan' : undefined}>{isDone ? '✓' : isActive ? '●' : '○'}</Text>
+              <Text color={isDone ? 'green' : isActive ? 'cyan' : undefined}>{optional ? '◌' : isDone ? '✓' : isActive ? '●' : '○'}</Text>
             )}
             <Box flexDirection="row" alignItems="center" marginLeft={2}>
               <Button key={`btn-${i}`} plain onPress={() => $.prompt.fill({ text: `${st.command} `, mode: 'replace' })}>
@@ -322,6 +369,11 @@ function stepper(
               <Text dimColor italic hover={{ dimColor: false, color: 'cyan' }}>
                 {'  '}{st.command.replace('/mattpocock-skills:', '/')}
               </Text>
+              {note && (
+                <Text dimColor={!retro.due} color={retro.due ? 'yellow' : undefined}>
+                  {'  · '}{note}
+                </Text>
+              )}
             </Box>
           </Box>
         )
@@ -366,6 +418,8 @@ export const register: Register = on => {
 
     const saved = await $.store.get('flow')
     if (typeof saved === 'number') await update($, flow, () => saved)
+    const retroAt = await $.store.get('lastRetro')
+    if (typeof retroAt === 'number') await update($, lastRetro, () => retroAt)
 
     const named = new Set<string>()
     const known = new Map<string, number>()
@@ -498,6 +552,24 @@ export const register: Register = on => {
     return ran
   }).catch(($, e, next) => next(e))
 
+  // Tells Claude whether a retro is due, so it neither skips one for long nor runs one every round.
+  on('prompt.compose', async ($, e, next) => {
+    const out = await next(e)
+    try {
+      const last = await read($, lastRetro)
+      const r = retroOf(last, false, await $.clock.now())
+      const text = r.due
+        ? `Retro (/retro): ${last ? `die letzte war am ${dayOf(last)}` : 'noch keine gelaufen'}, eine ist fällig. ` +
+          'Schlag sie nach /implement-spec vor, bevor es mit /pr weitergeht.'
+        : `Retro (/retro): die letzte war am ${dayOf(last)}, die nächste ist erst ab ${dayOf(r.next)} fällig. ` +
+          'Ruf /retro bis dahin nicht von dir aus auf und schlag sie nicht vor; nach /implement-spec geht es direkt mit /pr weiter. ' +
+          'Verlangt die Person ausdrücklich eine Retro, mach sie trotzdem.'
+      return { sections: [...out.sections, { id: 'agent-crew:retro', text, scope: 'session' as const }] }
+    } catch {
+      return out
+    }
+  }).catch(($, e, next) => next(e))
+
   // Which step of the flow the person started: the slash command at the start of a prompt.
   on('prompt.submit', async ($, e, next) => {
     try {
@@ -573,13 +645,14 @@ export const register: Register = on => {
     const mods = await read($, models)
     const nm = await read($, names)
     const boss = await read($, main)
+    const retro = retroOf(await read($, lastRetro), await read($, retroRan), now)
     await read($, tick)
     const { Box, Text, Button, Svg } = $.ui.resolve(e) as any
     const bossSprite = spriteFor(mainAgent(boss, now), (acts[MAIN] ?? []).slice(-1)[0], now)
 
     return (
       <Box flexDirection="column" alignItems="center">
-        {stepper($, Box, Text, Button, Svg, active, t % 2, true)}
+        {stepper($, Box, Text, Button, Svg, active, t % 2, retro, true)}
         <Box flexDirection="row" justifyContent="flex-start" alignSelf="flex-start" marginTop={1}>
         <Box key="agent-main" flexDirection="row">
           {Svg ? (
@@ -649,6 +722,7 @@ export const register: Register = on => {
     const now = await $.clock.now()
     const running = list.filter(isLive)
     const done = list.filter(a => !isLive(a)).slice(-3)
+    const retro = retroOf(await read($, lastRetro), await read($, retroRan), now)
 
     const issueLine = (n: number) => {
       const i = iss[String(n)]
@@ -840,7 +914,7 @@ export const register: Register = on => {
           panel(
             'flow',
             <Box flexDirection="column">
-              {stepper($, Box, Text, Button, Svg, active, t % 2)}
+              {stepper($, Box, Text, Button, Svg, active, t % 2, retro)}
               <Box marginTop={1}>
                 <Button
                   key="reset"
@@ -849,6 +923,7 @@ export const register: Register = on => {
                   onPress={async () => {
                     await update($, flow, () => 0)
                     await $.store.set('flow', 0)
+                    await update($, retroRan, () => false)
                   }}
                 >
                   ↺ zurücksetzen
