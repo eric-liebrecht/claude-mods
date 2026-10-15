@@ -6,7 +6,8 @@ Mods for Claude Code by Eric Liebrecht.
 
 Live view of running sub-agents as animated pixel critters, with the current step of the engineering flow
 (grill, spec, tickets, implement, retro, PR) and the state of the session's prompt cache. A band above the prompt and a pane (`/crew`).
-The retro is due once a week: in between the step shows as optional and Claude is told not to start one on its own.
+The retro is optional, only every now and then: Claude is told not to run one every round, and a round that goes
+straight to `/pr` shows it as skipped.
 
 Install in a terminal session of Claude Code:
 
