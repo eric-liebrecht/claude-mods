@@ -41,6 +41,8 @@ const STEPS: Step[] = [
   { label: 'Spec', names: ['to-spec'], command: '/mattpocock-skills:to-spec' },
   { label: 'Tickets', names: ['to-tickets'], command: '/mattpocock-skills:to-tickets' },
   { label: 'Umsetzen', names: ['implement-spec'], command: '/implement-spec' },
+  { label: 'Retro', names: ['retro'], command: '/retro' },
+  { label: 'PR', names: ['pr'], command: '/pr' },
 ]
 const stepOf = (text: string): number => {
   const m = /(?:^|<command-name>)[ ]*[/](?:[a-z-]+:)?([a-z-]+)/.exec(text)
@@ -240,7 +242,7 @@ function nodeSvg(i: number, active: number, pulse: number): string {
 
 // Horizontal variant: circle in the middle of its cell, a line half to each neighbour,
 // so the row is symmetric and centres as a whole.
-const CELL = 150
+const CELL = 120
 function nodeSvgH(i: number, active: number, pulse: number): string {
   const isDone = i < active
   const isActive = i === active
