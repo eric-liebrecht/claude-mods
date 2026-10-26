@@ -21,16 +21,16 @@ Answer `y` to "Add marketplace?" and pick the user scope. Mods loaded this way a
 
 Skills for Claude Code, installed into a project with the [skills CLI](https://github.com/vercel-labs/skills), project-local and pinned in `skills-lock.json`.
 
-| Skill                                                                                                                             | What it does                                                                                                                                                                           |
-| --------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [factory](./skills/factory/SKILL.md)                                                                                              | Software factory: `/factory #<issue>` builds a released ticket AFK in a throwaway worktree (builder, security and code review) and opens a PR.                                         |
-| `implement`, `tdd`, `pr`, `code-review`, `to-spec`, `diagnosing-bugs`, `codebase-design`, `domain-modeling`, `writing-for-agents` | The skills of [mattpocock/skills](https://github.com/mattpocock/skills) the factory and its agents call, copied unchanged, so the factory runs on the versions it was written against. |
+| Skill                                                                                                                                      | What it does                                                                                                                                                                           |
+| ------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [factory](./skills/factory/SKILL.md)                                                                                                       | Software factory: `/factory #<issue>` builds a released ticket AFK in a throwaway worktree (builder, security and code review), opens a PR and ends with a retro per built job.        |
+| `implement`, `tdd`, `pr`, `code-review`, `to-spec`, `retro`, `diagnosing-bugs`, `codebase-design`, `domain-modeling`, `writing-for-agents` | The skills of [mattpocock/skills](https://github.com/mattpocock/skills) the factory and its agents call, copied unchanged, so the factory runs on the versions it was written against. |
 
-The factory has four agents (`builder`, `reviewer-code`, `reviewer-security`, `spec-writer`) in [skills/factory/subagents/](./skills/factory/subagents/), and reads what is special about a repo from `docs/agents/factory.md` (template: [skills/factory/config.md](./skills/factory/config.md)). Install in a project:
+The factory has five agents (`builder`, `reviewer-code`, `reviewer-security`, `spec-writer`, `retro`) in [skills/factory/subagents/](./skills/factory/subagents/); the retro reads the other agents' transcripts condensed by [scripts/transcript.mjs](./skills/factory/scripts/transcript.mjs). The factory reads what is special about a repo from `docs/agents/factory.md` (template: [skills/factory/config.md](./skills/factory/config.md)). Install in a project:
 
 ```bash
 npx skills@latest add eric-liebrecht/claude-mods --agent claude-code --copy -y \
-  --skill factory --skill implement --skill tdd --skill pr --skill code-review --skill to-spec \
+  --skill factory --skill implement --skill tdd --skill pr --skill code-review --skill to-spec --skill retro \
   --skill diagnosing-bugs --skill codebase-design --skill domain-modeling --skill writing-for-agents
 mkdir -p .claude/agents && cp .claude/skills/factory/subagents/*.md .claude/agents/
 cp .claude/skills/factory/config.md docs/agents/factory.md   # then fill it in
