@@ -1,6 +1,6 @@
 ---
 name: factory
-description: Run the software factory. Use when the user types /factory alone or /factory help (prints the help), /factory #<issue> [#<issue> …], /factory next [k], either with --bundle, /factory fix <description>, /factory rework <pr> [note] or /factory close [<pr> …], or asks to close the tickets the factory built. The session that runs it orchestrates the build → review loop of up to three jobs, each ending in a pull request into the integration branch, or in a drafted spec when a ticket has none.
+description: Run the software factory. Use when the user types /factory alone or /factory help (prints the help), /factory #<issue> [#<issue> …], /factory next [k], either with --bundle, /factory fix <description>, /factory rework <pr> [note] or /factory close [<pr> …], or asks to close the tickets the factory built. The session that runs it orchestrates the build → review loop of up to three jobs, each ending in a pull request into the integration branch, or in a drafted spec when a ticket has none, and closes with a retro of every built job.
 ---
 
 # Factory
@@ -29,7 +29,8 @@ When the arguments are empty or `help`, print the block below verbatim as your w
   /factory close [<pr> …]         Tickets gemergter PRs schließen, dann ihre fertigen Specs
   /factory help                   Diese Hilfe
 
-Ablauf: Ready-Check → Builder → Security- und Code-Review (max. 3 Runden) → PR.
+Ablauf: Ready-Check → Builder → Security- und Code-Review (max. 3 Runden) → PR → Retro.
+Retro: pro gebautem Job ein Agent, am Ende eine Tabelle mit Verbesserungen.
 Ticket ohne Spec: Spec-Entwurf als Issue, Ticket als Sub-Issue, Stopp bis zur Freigabe.
 Freigabe: in der Spec "Freigegeben von: Name [JJJJ-MM-TT]" ausfüllen.
 Draft-PR mit "Needs human", wenn du entscheiden musst. Branch: feat/<slug>-<n>, History linear.
@@ -50,7 +51,9 @@ ticket → ready check ─ fails ───────────────�
     [security, code] ──► WAIT FOR BOTH ──────────────────────────┘
               │ both PASS, or rounds exhausted
               ▼
-     sync (rebase on conflict) → PR into <integration> (draft when a human must decide) → clean up
+     sync (rebase on conflict) → PR into <integration> (draft when a human must decide) → retro → clean up
+                                                                                    │
+                                              last job ended ─► Status + Retro table ◄┘
 ```
 
 | Agent (`subagent_type`) | Writes                                                     | Skills                                                                                                            |
@@ -59,8 +62,9 @@ ticket → ready check ─ fails ───────────────�
 | `reviewer-security`     | `<scratch>/review-security.md`                             | none in the repo: its checklist and the config's `## Security`                                                    |
 | `reviewer-code`         | `<scratch>/review-code.md`                                 | `code-review`, with its Spec and Standards sub-agents                                                             |
 | `spec-writer`           | `<scratch>/spec.md`, its final report                      | `to-spec`, `codebase-design`                                                                                      |
+| `retro`                 | `<scratch>/retro.md`, its final report                     | `retro`, `writing-for-agents`; reads the job's transcripts through `scripts/transcript.mjs`                       |
 
-The agents live in `.claude/agents/`; their source is `.claude/skills/factory/subagents/`. When `.claude/agents/builder.md` is missing, stop with `⛔ Factory-Agenten fehlen` and `Du musst: .claude/skills/factory/subagents/*.md nach .claude/agents/ kopieren, Session neu starten`. What is special about this repo goes into `docs/agents/factory.md`, not into this file or the agents; rules for code live in `AGENTS.md`, which every agent reads.
+The agents live in `.claude/agents/`; their source is `.claude/skills/factory/subagents/`. When `.claude/agents/builder.md` or `.claude/agents/retro.md` is missing, stop with `⛔ Factory-Agenten fehlen` and `Du musst: .claude/skills/factory/subagents/*.md nach .claude/agents/ kopieren, Session neu starten`. What is special about this repo goes into `docs/agents/factory.md`, not into this file or the agents; rules for code live in `AGENTS.md`, which every agent reads.
 
 ## Names
 
@@ -70,9 +74,16 @@ The agents live in `.claude/agents/`; their source is `.claude/skills/factory/su
 - **Job**: `<slug>-<n>`, a 2 to 4 word kebab-case English slug of the issue title plus the issue number (`rating-filter-142`). A bundle: a slug of what its tickets share plus every number, ascending (`review-filters-142-143-147`). For `/factory fix` without an issue: `<slug>` alone.
 - **Branch**: `<type>/<job>`. `type` is `fix` when every ticket describes a bug, otherwise `feat`.
 - **Worktree**: `<main>/../<name>-factory/<job>`, absolute. `<main>` is the main checkout (`git rev-parse --show-toplevel`), `<name>` its directory name. Your session stays there and only runs `git fetch`, `git worktree`, `git branch` and `gh` in it: it belongs to the user.
-- **Scratch**: `${TMPDIR:-/tmp}/factory/<name>/<job>/`, absolute. Agents pass notes through it; nothing in it is kept.
+- **Scratch**: `${TMPDIR:-/tmp}/factory/<name>/<job>/`, absolute. Agents pass notes through it; nothing in it is kept. Besides the agents' files it holds the job's **record** for the retro (**Record**).
 - **Base**: the `origin/<integration>` commit the branch sits on: `git rev-parse origin/<integration>` when the worktree is cut, the rebase target after a **Sync**. Agents diff against it, so a moving integration branch never changes what they review.
 - **Schema lock**: `${TMPDIR:-/tmp}/factory/<name>/.schema-lock/`. All jobs of this repo on this machine share one dev database, so only one job at a time applies a migration. The builder takes it with `mkdir`; it holds the job name in `owner`.
+
+## Record
+
+The retro sees what the job's agents did through two things you keep in the scratch folder while the job runs:
+
+- `<scratch>/agents.md`: one line per agent run, appended when you spawn the agent: `<agent> <round> <agent id>` (`builder 1 a1b2c3…`, `security 1 d4e5f6…`). The agent id is the `agentId` the Agent tool result names. A builder resumed with `SendMessage` keeps its id and gets one more line with the new round.
+- `<scratch>/history/`: when a builder finishes, its final report as `builder-<N>.md` (`builder-<N>-rebase.md` for a rebase); when a review round is done, `cp` of both review files to `review-security-<N>.md` and `review-code-<N>.md`, before the next round overwrites them.
 
 Every agent prompt starts with
 `Job: <job>. Tickets: #<n>[, #<m> …] in build order (or: Small fix: <description, verbatim>). Worktree: <worktree>. Branch: <branch>. Base: <base>. Scratch: <scratch>. Schema lock: <schema lock>.`
@@ -102,7 +113,7 @@ Every job branch is a straight line of commits on top of its base, and stays one
 
 ## /factory #<issue>
 
-1. **Ready check.** In the main checkout read `docs/agents/factory.md`, check that `.claude/agents/builder.md` exists, run `gh auth status`, `git fetch origin <integration>` and `gh issue view <n> --json number,title,body,labels,assignees,state`. The ticket is ready when all hold:
+1. **Ready check.** In the main checkout read `docs/agents/factory.md`, check that `.claude/agents/builder.md` and `.claude/agents/retro.md` exist, run `gh auth status`, `git fetch origin <integration>` and `gh issue view <n> --json number,title,body,labels,assignees,state`. The ticket is ready when all hold:
     - it is open, carries `ready-for-agent`, has acceptance criteria and is unassigned or assigned to you;
     - it is a ticket, not a spec (**Freigabe** says how to tell);
     - its parent spec (the `## Parent` section or the parent sub-issue) is released, as **Freigabe** defines it;
@@ -112,9 +123,9 @@ Every job branch is a straight line of commits on top of its base, and stays one
 
     If anything else fails, stop without creating anything and end with **Status**: the failed condition as `⛔ <reason>`, the step that fixes it under `Du musst:` (filling in name and date in the spec's `## Freigabe` block, `/to-tickets`, closing a blocker). If `gh` fails, use the fallbacks in `docs/agents/issue-tracker.md`.
 
-2. **Claim.** `git worktree add -b <branch> <worktree> <base>` is the claim: it fails when the branch already exists, because another session on this machine runs the job (or left it behind, `git worktree list` shows it). Then stop with `⛔ läuft bereits (Worktree existiert)`. Otherwise `gh issue edit <n> --add-assignee @me` and `mkdir -p <scratch>`.
+2. **Claim.** `git worktree add -b <branch> <worktree> <base>` is the claim: it fails when the branch already exists, because another session on this machine runs the job (or left it behind, `git worktree list` shows it). Then stop with `⛔ läuft bereits (Worktree existiert)`. Otherwise `gh issue edit <n> --add-assignee @me` and `mkdir -p <scratch>/history`.
 3. **Setup.** In the worktree the commands of the config's `## Setup`, in order. If any of them fails, go to **Clean up** with `⛔ <command> fehlgeschlagen` and the error under `Fehler <job>:`.
-4. **Build.** Spawn `builder` **with the name `builder-<job>`** and the prompt `<head> Build round 1.` When it finishes, go to **Build check**.
+4. **Build.** Spawn `builder` **with the name `builder-<job>`** and the prompt `<head> Build round 1.` When it finishes, go to **Build check**. From here on, every job ends with **Retro** before **Clean up**, also when it stops with a failure.
 
 ## Draft spec
 
@@ -167,11 +178,19 @@ The first line of the builder's final report is `STATUS: READY` or `STATUS: BLOC
 6. When the Needs human list is not empty, append it to the body as a `## Needs human` section and open the PR as a draft.
     - New PR: `tail -n +3 <scratch>/pr.md | gh pr create --base <integration> --head <branch> --title "<title>" --body-file - [--draft]`.
     - Rework: the push updated the PR; `tail -n +3 <scratch>/pr.md | gh pr edit <pr> --body-file -`, and `gh pr ready <pr> --undo` when it now needs a human.
-7. If push or PR creation fails, stop with `⛔ Push fehlgeschlagen` or `⛔ PR-Erstellung fehlgeschlagen` and the output under `Fehler <job>:`, leaving the worktree. Otherwise go to **Clean up**.
+7. If push or PR creation fails, stop with `⛔ Push fehlgeschlagen` or `⛔ PR-Erstellung fehlgeschlagen` and the output under `Fehler <job>:`, leaving the worktree. Otherwise go to **Retro**.
+
+## Retro
+
+Every job whose builder ran gets one retro, right before its **Clean up** or before a stop that leaves the worktree: a PR, a draft, a `BLOCKED` builder, a failed push. A bundle is one job and gets one retro for all its tickets. Spec jobs and jobs that stopped before the builder get none.
+
+1. Spawn `retro` **with the name `retro-<job>`** and the prompt `<head> Retro: <scratch>/agents.md lists the agent runs, <scratch>/history/ holds the reports and reviews.` In **Several jobs** with `run_in_background: true`, like every agent.
+2. When it finishes, line 1 of `<scratch>/retro.md` must be `STATUS: READY`. Keep its table rows (or `Keine Befunde.`) for the **Retro** block; they are gone with the scratch folder. No such file, or `STATUS: BLOCKED`: the retro row reads `⛔ <reason>`. The job result stays as it was: a retro never changes a PR.
+3. Go to **Clean up**, or stop as the step before said.
 
 ## Clean up
 
-Always the last step of a job, also after a failure: `git worktree remove --force <worktree>`, `git branch -D <branch>` (the pushed branch lives on `origin`), `rm -rf <scratch>`, and `rm -rf <schema lock>` when its `owner` names this job. Then the job's last **Step** line ends in `PR ✅ #<pr>`, `PR ⚠️ #<pr> Draft` or `fertig`, and, when it was the last job, **Status** with the job result `✅ #<pr>`, or `⚠️ #<pr> Draft` with its Needs human items under `Du musst:`, or `⛔ <reason>`.
+Always the last step of a job, also after a failure, and after its **Retro**: `git worktree remove --force <worktree>`, `git branch -D <branch>` (the pushed branch lives on `origin`), `rm -rf <scratch>`, and `rm -rf <schema lock>` when its `owner` names this job. Then the job's last **Step** line ends in `PR ✅ #<pr>`, `PR ⚠️ #<pr> Draft` or `fertig` (followed by `→ retro` when a retro runs; the retro's own line then ends in `fertig`), and, when it was the last job, **Status** and **Retro** with the job result `✅ #<pr>`, or `⚠️ #<pr> Draft` with its Needs human items under `Du musst:`, or `⛔ <reason>`.
 
 ## /factory next [k]
 
@@ -189,7 +208,7 @@ Find frontier tickets, as `docs/agents/issue-tracker.md` defines them:
 - Spawn every agent with `run_in_background: true`. When an agent finishes, move only its job one step; one job never waits for another, except on the schema lock.
 - A job's two reviewers still go out in one message, and its **WAIT FOR BOTH** is per job.
 - Tickets of one batch are independent by construction, because a ticket with an open blocker is not on the frontier. Two of them may still touch the same files: the second PR then conflicts once the first is merged, and `/factory rework <pr>` rebases it.
-- Every **Step** line starts with its job label. When the last job is cleaned up, end with **Status**.
+- Every **Step** line starts with its job label. When the last job is cleaned up, end with **Status** and **Retro** in one message.
 
 ## Bundles (--bundle)
 
@@ -235,13 +254,13 @@ Close only tickets a merged PR names in a `Closes #<n>` line; a ticket of an ope
 
 ## Output
 
-Every message to the user is one of the four blocks below, filled in, in German, with nothing before or after it: no intro, no recap of what you did, no explanation, no tool narration, no closing remark. Only two exceptions: `/factory help` prints its own block, and a direct question from the user gets at most two sentences, followed by **Status** when jobs exist. Where the steps above say "stop", "say so" or "report", that means the block named there. Spell PRs and issues as links, `[#512](<url>)`.
+Every message to the user is one of the five blocks below, filled in, in German, with nothing before or after it: no intro, no recap of what you did, no explanation, no tool narration, no closing remark. Only two exceptions: `/factory help` prints its own block, and a direct question from the user gets at most two sentences, followed by **Status** when jobs exist. Where the steps above say "stop", "say so" or "report", that means the block named there. Spell PRs and issues as links, `[#512](<url>)`.
 
 Fixed words, nothing else in their place:
 
 - **Job label**: its ticket numbers, `#142`, a bundle `#143+#147`; a small fix without a ticket: `fix <slug>`.
-- **Agent**: `builder`, `security`, `code`, `spec-writer`, each with its round: `builder 2`, `security 1`. A rework builder counts from 1 again; a rebase is `builder <n> Rebase`.
-- **Agent result**: `✓` (READY, PASS), `✓ <k> Commits` for a builder, `✓ Entwurf` for the spec writer, `✗ <k> Findings: <main finding>` (CHANGES), singular for one (`✓ 1 Commit`, `✗ 1 Finding: …`), `⛔ <reason>` (BLOCKED, failure), `🔄 läuft` (spawned, not finished).
+- **Agent**: `builder`, `security`, `code`, `spec-writer`, each with its round: `builder 2`, `security 1`. A rework builder counts from 1 again; a rebase is `builder <n> Rebase`. The retro is `retro`, without a round.
+- **Agent result**: `✓` (READY, PASS), `✓ <k> Commits` for a builder, `✓ Entwurf` for the spec writer, `✓ <k> Befunde` for the retro (`✓ 1 Befund`, `✓ keine Befunde`), `✗ <k> Findings: <main finding>` (CHANGES), singular for one (`✓ 1 Commit`, `✗ 1 Finding: …`), `⛔ <reason>` (BLOCKED, failure), `🔄 läuft` (spawned, not finished).
 - **Job result**: `🔄` (running), `✅ #<pr>` (PR ready), `⚠️ #<pr> Draft` (PR needs a human), `📝 Spec #<n>` (spec drafted), `⛔ <reason>` (no PR).
 - A `<reason>` or `<main finding>` has at most six words and names the cause, not the step: `Blocker #158 offen`, `Spec #120 nicht freigegeben`, `läuft bereits`, `pnpm install fehlgeschlagen`, `Tenant-Filter fehlt`.
 
@@ -269,15 +288,16 @@ One line whenever an agent finishes, naming what is spawned next: `<job label> �
 #142 · code 1 · ✗ 2 Findings: Tenant-Filter fehlt → builder 2
 #143+#147 · builder 1 · ⛔ Schema-Lock → wartet auf #142
 #142 · code 2 · ✓ → Sync: Konflikt → builder 2 Rebase
-#142 · code 3 · ✓ → PR ✅ #512
+#142 · code 3 · ✓ → PR ✅ #512 → retro
 #150 · spec-writer 1 · ✓ Entwurf → Spec #520, fertig
+#142 · retro · ✓ 3 Befunde → fertig
 ```
 
 Setup, sync and PR steps without an agent get a line only when they fail or change the course: `#142 · Setup · ⛔ pnpm install fehlgeschlagen → fertig`.
 
 ### Status
 
-After each completed review round (both reviewers done), as the last message once every job has ended, and the whole answer whenever the user asks for the status. One table: a bold row per job, in start order, with its review round reached and job result; below it one `↳` row per agent run of a running job, in spawn order, the running one included, and one `↳ Runde <n>` row per round of an ended job. Then `Du musst:` with what only the human can do:
+After each completed review round (both reviewers done), as the last message once every job has ended (followed by **Retro**), and the whole answer whenever the user asks for the status. One table: a bold row per job, in start order, with its review round reached and job result; below it one `↳` row per agent run of a running job, in spawn order, the running one included, and one `↳ Runde <n>` row per round of an ended job. Then `Du musst:` with what only the human can do:
 
 ```text
 | Ticket / Agent | Runde | Ergebnis |
@@ -293,6 +313,7 @@ After each completed review round (both reviewers done), as the last message onc
 | ↳ Runde 1 | 1 | builder ✓ · security ✓ · code ✗ 2 Findings |
 | ↳ Runde 2 | 2 | builder ✓ · security ✗ 1 Finding · code ✓ |
 | ↳ Runde 3 | 3 | builder ✓ · security ✓ · code ✗ 1 Finding |
+| ↳ retro | – | ✓ 2 Befunde |
 | **#150 CSV-Export** | – | 📝 Spec #520 |
 | ↳ spec-writer 1 | – | ✓ Entwurf |
 | **#161 Import** | – | ⛔ Blocker #158 offen |
@@ -304,11 +325,29 @@ Du musst:
 ```
 
 - `Runde` is the review round the row belongs to: a reviewer its round, `builder <n>` round `<n>`, whose code it writes, except `builder 1`, which gets `–`. On the bold row the round reached, out of 3. `–` for spec jobs.
-- A round row of an ended job holds its builder and both reviewers, each with `✓`, `✗ <k> Findings` or `⛔`, without the main finding; a rebase builder joins the round after it. A spec job keeps its single `↳ spec-writer 1` row.
+- A round row of an ended job holds its builder and both reviewers, each with `✓`, `✗ <k> Findings` or `⛔`, without the main finding; a rebase builder joins the round after it. The retro keeps its own `↳ retro` row, below the rounds. A spec job keeps its single `↳ spec-writer 1` row.
 - Every agent row of a running job is written out, none merged.
 - `Du musst:` holds at most three items per job, each one line starting with the PR or issue it is about, as an imperative: the Needs human items of a draft PR, the next step after a spec or a stop, each dropped ticket of a bundle (`#147: nicht gebaut, <reason>`). Leave the heading out when there is nothing.
 - When `git` or `gh` failed, add `Fehler <job label>:` and at most five lines of their output in a code block.
 - No job in this session: `Factory · keine Jobs in dieser Session`. `/factory next` with no ticket left: `Factory · keine freien Tickets`.
+
+### Retro
+
+Once, right below the final **Status**, when at least one job had a retro. You merge the rows of every `retro.md` of this session into one table:
+
+```text
+Retro · 2 Jobs · 5 Befunde
+| # | Bereich | Schwere | Befund | Vorschlag | Jobs |
+| --- | --- | --- | --- | --- | --- |
+| 1 | Checks | hoch | Prettier-Fehler erst im Code-Review | prettier --check in factory.md Validate | #142, #143+#147 |
+| 2 | Navigation | mittel | Builder suchte Guards in 14 Aufrufen | Zeiger in apps/api/AGENTS.md | #142 |
+| 3 | Factory | niedrig | Security liest Billing-Doku ohne Billing | Security-Abschnitt in factory.md kürzen | #143+#147 |
+```
+
+- One row per distinct improvement: findings of several jobs that propose the same change become one row, with every job label under `Jobs` and the highest `Schwere`. Keep the wording short; shorten a `Befund` or `Vorschlag` rather than wrap it.
+- Order: `hoch` before `mittel` before `niedrig`, then by the number of jobs. At most eight rows; the count in the heading counts the merged rows, `+<k> weitere` after the table names what you left out.
+- A retro that failed: a line `<job label>: Retro ⛔ <reason>` below the table. Every retro without findings: `Retro · keine Befunde`.
+- You suggest; you change nothing. The human picks the rows worth a change.
 
 ### Close
 
