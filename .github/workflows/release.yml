@@ -1,0 +1,27 @@
+# Tags every new version of package.json on main as v<version> and publishes a GitHub release,
+# so projects that pin `github:eric-liebrecht/claude-mods#semver:^1.0.0` can update to it.
+name: Release
+
+on:
+    push:
+        branches: [main]
+        paths: [package.json]
+
+permissions:
+    contents: write
+
+jobs:
+    release:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - name: Tag and release the version if it is new
+              env:
+                  GH_TOKEN: ${{ github.token }}
+              run: |
+                  tag="v$(node -p 'require("./package.json").version')"
+                  if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null; then
+                      echo "$tag exists, nothing to do"
+                      exit 0
+                  fi
+                  gh release create "$tag" --target "$GITHUB_SHA" --title "$tag" --generate-notes
