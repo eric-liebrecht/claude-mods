@@ -7,7 +7,7 @@ description: Run the software factory. Use when the user types /factory alone or
 
 You orchestrate jobs: a released ticket (`ready-for-agent`), or a **bundle** of related ones, becomes a pull request into the integration branch. You run the loop, spawn every agent and talk to `git` and `gh`; the agents write code and reviews. The human did the judgement work before (`grill-with-docs`, `prototype`, `to-spec` with Freigabe, `to-tickets`) and merges the PR after. A ticket without a parent spec gets one drafted by `spec-writer` (**Draft spec**), and its job stops there: the human reviews and releases the spec, then starts the ticket again. You never merge and never push to a protected branch. You close tickets only with **/factory close**, when the human says they are done: a PR into a branch that is not the default branch never closes them, and one into the default branch may close them before the human has looked.
 
-**GitHub is the only state.** The issue says what to build, its assignee says who builds it, the PR is the result. Everything else is throwaway: the job's worktree and its scratch folder exist while this session runs the job and are removed at the end, so nothing of a job lands in the repo or outlives the session.
+**GitHub is the only state.** The issue says what to build, its label `factory-in-progress` says that a factory session builds it right now, its assignee says who built it, the PR is the result. The label is what lets several sessions run the factory on one repo in parallel, each in its own worktrees, on one machine or several: every session skips a ticket that carries it, already in the search. Everything else is throwaway: the job's worktree and its scratch folder exist while this session runs the job and are removed at the end, so nothing of a job lands in the repo or outlives the session.
 
 **`docs/agents/factory.md` is the repo's part.** It names the integration branch, the setup, the checks, the schema commands, the docs rule, the standards, the danger list and the security points of this repo. Read it before anything else; you and every agent follow it where this file says "the config". Missing: stop with `⛔ docs/agents/factory.md fehlt` and `Du musst: Vorlage .claude/skills/factory/config.md nach docs/agents/factory.md kopieren und ausfüllen`.
 
@@ -35,6 +35,7 @@ Ticket ohne Spec: Spec-Entwurf als Issue, Ticket als Sub-Issue, Stopp bis zur Fr
 Freigabe: in der Spec "Freigegeben von: Name [JJJJ-MM-TT]" ausfüllen.
 Draft-PR mit "Needs human", wenn du entscheiden musst. Branch: feat/<slug>-<n>, History linear.
 Einstellungen des Repos: docs/agents/factory.md.
+Label factory-in-progress: Ticket läuft gerade, jede andere Session überspringt es.
 Die Factory mergt nie und schließt Tickets nur mit /factory close.
 ```
 
@@ -76,6 +77,7 @@ The agents live in `.claude/agents/`; their source is `.claude/skills/factory/su
 - **Worktree**: `<main>/../<name>-factory/<job>`, absolute. `<main>` is the main checkout (`git rev-parse --show-toplevel`), `<name>` its directory name. Your session stays there and only runs `git fetch`, `git worktree`, `git branch` and `gh` in it: it belongs to the user.
 - **Scratch**: `${TMPDIR:-/tmp}/factory/<name>/<job>/`, absolute. Agents pass notes through it; nothing in it is kept. Besides the agents' files it holds the job's **record** for the retro (**Record**).
 - **Base**: the `origin/<integration>` commit the branch sits on: `git rev-parse origin/<integration>` when the worktree is cut, the rebase target after a **Sync**. Agents diff against it, so a moving integration branch never changes what they review.
+- **In-progress label**: `factory-in-progress`. A job puts it on each of its tickets when it claims them (**Claim**) and takes it off again when it ends (**Release**). A ticket that carries it belongs to a running job of some session, so the ready check fails for it and the searches of **/factory next** and **Bundles** leave it out.
 - **Schema lock**: `${TMPDIR:-/tmp}/factory/<name>/.schema-lock/`. All jobs of this repo on this machine share one dev database, so only one job at a time applies a migration. The builder takes it with `mkdir`; it holds the job name in `owner`.
 
 ## Record
@@ -88,6 +90,10 @@ The retro sees what the job's agents did through two things you keep in the scra
 Every agent prompt starts with
 `Job: <job>. Tickets: #<n>[, #<m> …] in build order (or: Small fix: <description, verbatim>). Worktree: <worktree>. Branch: <branch>. Base: <base>. Scratch: <scratch>. Schema lock: <schema lock>.`
 Below, `<head>` stands for that sentence.
+
+## Release
+
+Every job that put the in-progress label on its tickets takes it off again when it ends in this session, whatever the end: in **Clean up**, and right before every stop that leaves the worktree (`⛔ Worktree nicht sauber`, `⛔ PR-Text ohne pr-Template`, a failed push or PR). For each ticket of the job: `gh issue edit <n> --remove-label factory-in-progress`. If that fails, name the ticket under `Du musst:` as `#<n>: Label factory-in-progress entfernen`. A session that dies mid-job leaves the label behind; the human removes it by hand once no session runs the job any more.
 
 ## Freigabe
 
@@ -115,6 +121,7 @@ Every job branch is a straight line of commits on top of its base, and stays one
 
 1. **Ready check.** In the main checkout read `docs/agents/factory.md`, check that `.claude/agents/builder.md` and `.claude/agents/retro.md` exist, run `gh auth status`, `git fetch origin <integration>` and `gh issue view <n> --json number,title,body,labels,assignees,state`. The ticket is ready when all hold:
     - it is open, carries `ready-for-agent`, has acceptance criteria and is unassigned or assigned to you;
+    - it does not carry `factory-in-progress` (another session builds it; `⛔ läuft bereits (Label)`, with `Du musst: #<n>: Label factory-in-progress entfernen, falls kein Job mehr läuft`);
     - it is a ticket, not a spec (**Freigabe** says how to tell);
     - its parent spec (the `## Parent` section or the parent sub-issue) is released, as **Freigabe** defines it;
     - every blocker is closed (`gh api repos/<repo>/issues/<n> --jq .issue_dependencies_summary.blocked_by` is 0, and every issue in a `Blocked by:` line is closed).
@@ -123,7 +130,9 @@ Every job branch is a straight line of commits on top of its base, and stays one
 
     If anything else fails, stop without creating anything and end with **Status**: the failed condition as `⛔ <reason>`, the step that fixes it under `Du musst:` (filling in name and date in the spec's `## Freigabe` block, `/to-tickets`, closing a blocker). If `gh` fails, use the fallbacks in `docs/agents/issue-tracker.md`.
 
-2. **Claim.** `git worktree add -b <branch> <worktree> <base>` is the claim: it fails when the branch already exists, because another session on this machine runs the job (or left it behind, `git worktree list` shows it). Then stop with `⛔ läuft bereits (Worktree existiert)`. Otherwise `gh issue edit <n> --add-assignee @me` and `mkdir -p <scratch>/history`.
+2. **Claim.** Two parts, the label first, because it is the one every session on every machine sees:
+    - **Label.** `gh label create factory-in-progress --color FBCA04 --description "Die Factory baut dieses Ticket gerade" --force` (creates it once, a no-op after). Read the labels again right before setting it (`gh issue view <n> --json labels`): another session may have claimed the ticket since the ready check. Then stop with `⛔ läuft bereits (Label)`. Otherwise `gh issue edit <n> --add-label factory-in-progress --add-assignee @me`.
+    - **Worktree.** `git worktree add -b <branch> <worktree> <base>`: it fails when the branch already exists, because another session on this machine runs the job (or left it behind, `git worktree list` shows it). Then **Release** the label you just set and stop with `⛔ läuft bereits (Worktree existiert)`. Otherwise `mkdir -p <scratch>/history`.
 3. **Setup.** In the worktree the commands of the config's `## Setup`, in order. If any of them fails, go to **Clean up** with `⛔ <command> fehlgeschlagen` and the error under `Fehler <job>:`.
 4. **Build.** Spawn `builder` **with the name `builder-<job>`** and the prompt `<head> Build round 1.` When it finishes, go to **Build check**. From here on, every job ends with **Retro** before **Clean up**, also when it stops with a failure.
 
@@ -131,18 +140,18 @@ Every job branch is a straight line of commits on top of its base, and stays one
 
 A ticket without a parent spec gets one drafted and published as a draft. Nothing is built from it until the human has released it, so the job ends with the spec.
 
-1. **Claim.** `git worktree add --detach <worktree> origin/<integration>` is the claim: it fails when the path exists, because another session drafts this spec. Then stop with `⛔ läuft bereits (Worktree existiert)`. Otherwise `mkdir -p <scratch>`. No **Setup**: the spec writer only reads, and the ticket gets no assignee.
+1. **Claim.** The label as in **/factory #<issue>** step 2, on every ticket of the spec job, but without `--add-assignee`: the ticket gets no assignee. Then `git worktree add --detach <worktree> origin/<integration>`: it fails when the path exists, because another session drafts this spec. Then **Release** and stop with `⛔ läuft bereits (Worktree existiert)`. Otherwise `mkdir -p <scratch>`. No **Setup**: the spec writer only reads.
 2. **Draft.** Spawn `spec-writer` **with the name `spec-writer-<job>`** and the prompt `Job: <job>. Tickets: #<n>[, #<m> …]. Worktree: <worktree>. Scratch: <scratch>.` On `STATUS: BLOCKED`, go to step 5 with the blocker as `⛔ <reason>`.
 3. **Check.** Line 1 of `<scratch>/spec.md` starts with `TITLE: `, line 3 is `## Freigabe`, and its `Freigegeben von:` line is still `- Freigegeben von: Name [JJJJ-MM-TT]`. Otherwise go to step 5 with `⛔ Spec-Entwurf fehlerhaft`.
 4. **Publish.** Check every ticket once more for a parent (`…/issues/<n>/parent`); one that has got one in the meantime is left out, and when none is left, go to step 5. Then:
     - `tail -n +3 <scratch>/spec.md | gh issue create --title "<title>" --body-file -`, without a label: the spec isn't built itself, and a label on a spec is no Freigabe.
     - Link each ticket as a sub-issue of the spec: `gh api --method POST repos/<repo>/issues/<spec>/sub_issues -F sub_issue_id=<id>`, where `<id>` is the ticket's database id (`gh api repos/<repo>/issues/<n> --jq .id`). If that fails, name the ticket under `Du musst:` so the human links it.
     - Comment on each ticket: `gh issue comment <n> --body "Spec-Entwurf #<spec> angelegt. Gebaut wird nach der Freigabe."`.
-5. **Clean up.** `git worktree remove --force <worktree>` and `rm -rf <scratch>`; there is no branch. The job's bold row in **Status** is `📝 Spec #<spec>`, with `Du musst: #<spec>: <k> Offene Fragen klären, Freigabe ausfüllen, dann /factory #<n>` and each ticket that could not be linked (`#<n> als Sub-Issue von #<spec> verknüpfen`). Or `⛔ <reason>` when there is no spec.
+5. **Clean up.** **Release**, `git worktree remove --force <worktree>` and `rm -rf <scratch>`; there is no branch. The job's bold row in **Status** is `📝 Spec #<spec>`, with `Du musst: #<spec>: <k> Offene Fragen klären, Freigabe ausfüllen, dann /factory #<n>` and each ticket that could not be linked (`#<n> als Sub-Issue von #<spec> verknüpfen`). Or `⛔ <reason>` when there is no spec.
 
 ## /factory fix <description>
 
-For a small fix without a ticket: one bug or one copy change, no new screen, no new schema model or migration, no new dependency. If the description is more than that, stop with `⛔ zu groß für fix` and `Du musst: /to-spec`. Otherwise run **/factory #<issue>** from step 2, without the assignee, with `type: fix`, and use `Small fix: <description>` in `<head>`.
+For a small fix without a ticket: one bug or one copy change, no new screen, no new schema model or migration, no new dependency. If the description is more than that, stop with `⛔ zu groß für fix` and `Du musst: /to-spec`. Otherwise run **/factory #<issue>** from step 2, without the label and the assignee (there is no ticket), with `type: fix`, and use `Small fix: <description>` in `<head>`.
 
 ## Build check
 
@@ -190,15 +199,15 @@ Every job whose builder ran gets one retro, right before its **Clean up** or bef
 
 ## Clean up
 
-Always the last step of a job, also after a failure, and after its **Retro**: `git worktree remove --force <worktree>`, `git branch -D <branch>` (the pushed branch lives on `origin`), `rm -rf <scratch>`, and `rm -rf <schema lock>` when its `owner` names this job. Then the job's last **Step** line ends in `PR ✅ #<pr>`, `PR ⚠️ #<pr> Draft` or `fertig` (followed by `→ retro` when a retro runs; the retro's own line then ends in `fertig`), and, when it was the last job, **Status** and **Retro** with the job result `✅ #<pr>`, or `⚠️ #<pr> Draft` with its Needs human items under `Du musst:`, or `⛔ <reason>`.
+Always the last step of a job, also after a failure, and after its **Retro**: **Release**, `git worktree remove --force <worktree>`, `git branch -D <branch>` (the pushed branch lives on `origin`), `rm -rf <scratch>`, and `rm -rf <schema lock>` when its `owner` names this job. Then the job's last **Step** line ends in `PR ✅ #<pr>`, `PR ⚠️ #<pr> Draft` or `fertig` (followed by `→ retro` when a retro runs; the retro's own line then ends in `fertig`), and, when it was the last job, **Status** and **Retro** with the job result `✅ #<pr>`, or `⚠️ #<pr> Draft` with its Needs human items under `Du musst:`, or `⛔ <reason>`.
 
 ## /factory next [k]
 
 Find frontier tickets, as `docs/agents/issue-tracker.md` defines them:
 
-1. `gh issue list --state open --label ready-for-agent --search "no:assignee sort:created-asc" --json number,title --limit 30`.
+1. `gh issue list --state open --label ready-for-agent --search "no:assignee -label:factory-in-progress sort:created-asc" --json number,title --limit 30`. The `-label:` filter keeps out every ticket another session builds right now.
 2. Walk the list in order and skip an issue that is a spec (**Freigabe** says how to tell; sub-issues: `gh api repos/<repo>/issues/<n> --jq .sub_issues_summary.total` above 0). This also catches a spec whose tickets don't exist yet. Skip a ticket with an open blocker as well, unless it has no parent spec.
-3. Take the first `k` (default 1, at most 3) that pass the ready check and the claim; a ticket whose claim fails is skipped, not an error. A ticket without a parent spec counts as one of the `k`, and its job is a **Draft spec**. Its next `/factory next` skips it, because its spec then waits for the Freigabe. One ticket: run **/factory #<issue>**. More: run them as **Several jobs**. If none is left, answer `Factory · keine freien Tickets` and stop. With `--bundle`, form bundles instead (**Bundles**).
+3. Take the first `k` (default 1, at most 3) that pass the ready check and the claim; a ticket whose claim fails (it got the label from another session in the meantime, or its worktree exists) is skipped, not an error, and the next one on the list takes its place. A ticket without a parent spec counts as one of the `k`, and its job is a **Draft spec**. Its next `/factory next` skips it, because its spec then waits for the Freigabe. One ticket: run **/factory #<issue>**. More: run them as **Several jobs**. If none is left, answer `Factory · keine freien Tickets` and stop. With `--bundle`, form bundles instead (**Bundles**).
 
 ## Several jobs
 
@@ -207,6 +216,7 @@ Find frontier tickets, as `docs/agents/issue-tracker.md` defines them:
 - Every job runs the steps above on its own: its own worktree, scratch, base and agents, all named with its job (`builder-<job>`, `spec-writer-<job>`). A **Draft spec** is a job too, one per ticket without a spec.
 - Spawn every agent with `run_in_background: true`. When an agent finishes, move only its job one step; one job never waits for another, except on the schema lock.
 - A job's two reviewers still go out in one message, and its **WAIT FOR BOTH** is per job.
+- Several sessions may run the factory on the same repo at the same time, in their own worktrees: the in-progress label keeps them apart, so no ticket is built twice. The limit of three jobs holds per session.
 - Tickets of one batch are independent by construction, because a ticket with an open blocker is not on the frontier. Two of them may still touch the same files: the second PR then conflicts once the first is merged, and `/factory rework <pr>` rebases it.
 - Every **Step** line starts with its job label. When the last job is cleaned up, end with **Status** and **Retro** in one message.
 
@@ -215,15 +225,15 @@ Find frontier tickets, as `docs/agents/issue-tracker.md` defines them:
 `--bundle` puts related tickets on one branch and into one PR, so work that belongs together is built, reviewed and merged together.
 
 - `/factory #<a> #<b> … --bundle`: the named tickets are one job.
-- `/factory next [k] --bundle`: you form the bundles. Load every open, unassigned `ready-for-agent` issue: `gh issue list --state open --label ready-for-agent --search "no:assignee sort:created-asc" --json number,title,body,labels --limit 100`. Drop specs (as in **/factory next** step 2) and every ticket that fails the ready check, except where its only open blockers are tickets of the same bundle. Then group:
+- `/factory next [k] --bundle`: you form the bundles. Load every open, unassigned `ready-for-agent` issue that no session builds: `gh issue list --state open --label ready-for-agent --search "no:assignee -label:factory-in-progress sort:created-asc" --json number,title,body,labels --limit 100`. Drop specs (as in **/factory next** step 2) and every ticket that fails the ready check, except where its only open blockers are tickets of the same bundle. Then group:
     - **Related** means one branch is the natural place for them: the same parent spec first, otherwise the same feature, screen, module or model named in their titles and bodies. A shared word or label alone is not enough; in doubt, a ticket stays on its own.
     - A bundle holds at most 4 tickets. A ticket blocked by one outside its bundle stays out.
     - Take the bundle of the oldest ticket, then the next disjoint one, up to `k` (default 1, at most 3). A ticket with no related one is a bundle of one, a normal job.
     - **Start** names each bundle with its reason in at most six words (`Bündel: gleiche Spec #120`).
 - **Build order**: blockers before the tickets they block, otherwise oldest first. It is the order in `<head>`.
-- The ready check and the claim hold for every ticket; the branch is the one claim, and every ticket gets the assignee. A bundle runs the same loop as one ticket and counts as one job in **Several jobs**.
+- The ready check and the claim hold for every ticket: every ticket gets the label and the assignee, then the branch is the one worktree claim. When one ticket's label claim fails, **Release** the ones already labelled and stop with `⛔ läuft bereits (Label #<n>)`; with `next --bundle`, drop that ticket and claim the rest. A bundle runs the same loop as one ticket and counts as one job in **Several jobs**.
 - Tickets without a parent spec: with `/factory #<a> #<b> … --bundle`, they get one spec together (**Draft spec**), and the bundle stops there, also for its tickets that have a released spec. With `next --bundle` they join no bundle: each becomes its own **Draft spec** job and counts as one of the `k`.
-- The builder commits each ticket separately and may drop a ticket it can't build (`## Dropped` in its report). Remove the assignee from each dropped ticket (`gh issue edit <n> --remove-assignee @me`) and list it under `Du musst:` as `#<n>: nicht gebaut, <reason>`. When it dropped all of them, it reports `BLOCKED`.
+- The builder commits each ticket separately and may drop a ticket it can't build (`## Dropped` in its report). Remove the label and the assignee from each dropped ticket (`gh issue edit <n> --remove-label factory-in-progress --remove-assignee @me`) and list it under `Du musst:` as `#<n>: nicht gebaut, <reason>`. When it dropped all of them, it reports `BLOCKED`.
 - The PR names every ticket it built, one `Closes #<n>` line each; dropped ones are not named.
 
 ## /factory rework <pr> [note]
