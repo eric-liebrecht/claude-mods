@@ -26,7 +26,24 @@ Skills for Claude Code, installed into a project with the [skills CLI](https://g
 | [factory](./skills/factory/SKILL.md)                                                                                                       | Software factory: `/factory #<issue>` builds a released ticket AFK in a throwaway worktree (builder, security and code review), opens a PR and ends with a retro per built job. The label `factory-in-progress` marks tickets the factory has taken on until `/factory close`, so several sessions can run it on one repo in parallel. |
 | `implement`, `tdd`, `pr`, `code-review`, `to-spec`, `retro`, `diagnosing-bugs`, `codebase-design`, `domain-modeling`, `writing-for-agents` | The skills of [mattpocock/skills](https://github.com/mattpocock/skills) the factory and its agents call, copied unchanged, so the factory runs on the versions it was written against.                                                                                                                                                 |
 
-The factory has five agents (`builder`, `reviewer-code`, `reviewer-security`, `spec-writer`, `retro`) in [skills/factory/subagents/](./skills/factory/subagents/); the retro reads the other agents' transcripts condensed by [scripts/transcript.mjs](./skills/factory/scripts/transcript.mjs). The factory reads what is special about a repo from `docs/agents/factory.md` (template: [skills/factory/config.md](./skills/factory/config.md)). Install in a project:
+The factory has five agents (`builder`, `reviewer-code`, `reviewer-security`, `spec-writer`, `retro`) in [skills/factory/subagents/](./skills/factory/subagents/); the retro reads the other agents' transcripts condensed by [scripts/transcript.mjs](./skills/factory/scripts/transcript.mjs). The factory reads what is special about a repo from `docs/agents/factory.md` (template: [skills/factory/config.md](./skills/factory/config.md)).
+
+### Install with versions (pnpm)
+
+The repo is a package: `package.json` carries the version, every version on `main` is tagged `v<version>` with a GitHub release (workflow [release.yml](./.github/workflows/release.yml)). A project pins it as a devDependency and copies the skills into `.claude/` with its own sync script:
+
+```bash
+pnpm add -D -w "github:eric-liebrecht/claude-mods#semver:^1.0.0"
+pnpm update claude-mods --latest   # later: newest tagged version, pinned in pnpm-lock.yaml
+```
+
+The package ships `skills/` only. Copy `node_modules/claude-mods/skills/<name>` to `.claude/skills/<name>` and `skills/factory/subagents/*.md` to `.claude/agents/`, and commit the copies: Claude Code loads skills at session start, before any install. Ratinghero OS does this in `pnpm skills:update`.
+
+To release: change the skills, bump `version` in `package.json` (minor for new behaviour, major when a project has to change its `docs/agents/factory.md` or its setup), merge into `main`. The workflow tags it.
+
+### Install with the skills CLI
+
+Without versions, always the newest `main`:
 
 ```bash
 npx skills@latest add eric-liebrecht/claude-mods --agent claude-code --copy -y \
