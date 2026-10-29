@@ -9,7 +9,7 @@ You orchestrate jobs: a released ticket (`ready-for-agent`), or a **bundle** of 
 
 **GitHub is the only state.** The issue says what to build, its label `factory-in-progress` says that the factory has taken it on, from the claim until **/factory close**, its assignee says who built it, the PR is the result. The label is what lets several sessions run the factory on one repo in parallel, each in its own worktrees, on one machine or several: every session skips a ticket that carries it, already in the search. Everything else is throwaway: the job's worktree and its scratch folder exist while this session runs the job and are removed at the end, so nothing of a job lands in the repo or outlives the session.
 
-**`docs/agents/factory.md` is the repo's part.** It names the integration branch, the setup, the checks, the schema commands, the docs rule, the standards, the danger list and the security points of this repo. Read it before anything else; you and every agent follow it where this file says "the config". Missing: stop with `⛔ docs/agents/factory.md fehlt` and `Du musst: Vorlage .claude/skills/factory/config.md nach docs/agents/factory.md kopieren und ausfüllen`.
+**`docs/agents/factory.md` is the repo's part.** It names the integration branch, the setup, the checks, the schema commands, the docs rule, the standards, the danger list and the security points of this repo, and, when specs are files in the repo, their commands (`## Specs`). Read it before anything else; you and every agent follow it where this file says "the config". Missing: stop with `⛔ docs/agents/factory.md fehlt` and `Du musst: Vorlage .claude/skills/factory/config.md nach docs/agents/factory.md kopieren und ausfüllen`.
 
 **Every message to the user follows [Output](#output)**, from the first line to the last, also when the user asks for the status.
 
@@ -33,6 +33,7 @@ Ablauf: Ready-Check → Builder → Security- und Code-Review (max. 3 Runden) �
 Retro: pro gebautem Job ein Agent, am Ende eine Tabelle mit Verbesserungen.
 Ticket ohne Spec: Spec-Entwurf als Issue, Ticket als Sub-Issue, Stopp bis zur Freigabe.
 Freigabe: in der Spec "Freigegeben von: Name [JJJJ-MM-TT]" ausfüllen.
+Specs im Repo (## Specs in factory.md): Entwurf als Draft-PR, Freigabe mit dem Release-Befehl im Spec-PR.
 Draft-PR mit "Needs human", wenn du entscheiden musst. Branch: feat/<slug>-<n>, History linear.
 Einstellungen des Repos: docs/agents/factory.md.
 Label factory-in-progress: Ticket von der Factory übernommen, jede Session überspringt es.
@@ -44,7 +45,7 @@ Die Factory mergt nie und schließt Tickets nur mit /factory close.
 
 ```
 ticket → ready check ─ fails ─────────────────────────────► report, stop
-              │      └─ no parent spec ─► spec-writer ─► spec issue (Entwurf) ─► report, stop
+              │      └─ no parent spec ─► spec-writer ─► spec issue or spec PR (Entwurf) ─► report, stop
               │ claim
               ▼
            builder ◄──── any CHANGES: resume builder (max 2) ────┐
@@ -63,7 +64,7 @@ ticket → ready check ─ fails ───────────────�
 | `builder`               | commits on the branch, `<scratch>/pr.md`, its final report | `implement`, `tdd`, `pr`; on demand `diagnosing-bugs`, `codebase-design`, `domain-modeling`, `writing-for-agents` |
 | `reviewer-security`     | `<scratch>/review-security.md`                             | none in the repo: its checklist and the config's `## Security`                                                    |
 | `reviewer-code`         | `<scratch>/review-code.md`                                 | `code-review`, with its Spec and Standards sub-agents                                                             |
-| `spec-writer`           | `<scratch>/spec.md`, its final report                      | `to-spec`, `codebase-design`                                                                                      |
+| `spec-writer`           | `<scratch>/spec.md` (and `criteria.md`), its final report  | `to-spec`, `codebase-design`                                                                                      |
 | `retro`                 | `<scratch>/retro.md`, its final report                     | `retro`, `writing-for-agents`; reads the job's transcripts through `scripts/transcript.mjs`                       |
 
 The agents live in `.claude/agents/`; their source is `.claude/skills/factory/subagents/`. When `.claude/agents/builder.md` or `.claude/agents/retro.md` is missing, stop with `⛔ Factory-Agenten fehlen` and `Du musst: .claude/skills/factory/subagents/*.md nach .claude/agents/ kopieren, Session neu starten`. What is special about this repo goes into `docs/agents/factory.md`, not into this file or the agents; rules for code live in `AGENTS.md`, which every agent reads.
@@ -72,7 +73,7 @@ The agents live in `.claude/agents/`; their source is `.claude/skills/factory/su
 
 - **Repo**: `<owner>/<name>`, from `gh repo view --json nameWithOwner --jq .nameWithOwner` in the main checkout. Every `gh api repos/<repo>/…` below uses it.
 - **Integration branch** (`<integration>`): the config's `Integration branch`. **Protected branches**: the config's list, plus the integration branch and the default branch.
-- **Spec job**: `spec-<n>[-<m> …]`, the numbers of the tickets without a spec, ascending (`spec-142-143`). It drafts a spec and builds nothing: no branch, a detached worktree, the scratch folder.
+- **Spec job**: `spec-<n>[-<m> …]`, the numbers of the tickets without a spec, ascending (`spec-142-143`). It drafts a spec and builds nothing: no branch, a detached worktree, the scratch folder. With **Specs in the repo**, **Publish** puts the spec on the branch `spec/<spec>`, `<spec>` being the spec's folder name.
 - **Job**: `<slug>-<n>`, a 2 to 4 word kebab-case English slug of the issue title plus the issue number (`rating-filter-142`). A bundle: a slug of what its tickets share plus every number, ascending (`review-filters-142-143-147`). For `/factory fix` without an issue: `<slug>` alone.
 - **Branch**: `<type>/<job>`. `type` is `fix` when every ticket describes a bug, otherwise `feat`.
 - **Worktree**: `<main>/../<name>-factory/<job>`, absolute. `<main>` is the main checkout (`git rev-parse --show-toplevel`), `<name>` its directory name. Your session stays there and only runs `git fetch`, `git worktree`, `git branch` and `gh` in it: it belongs to the user.
@@ -106,6 +107,15 @@ Every spec the factory drafts starts with this block. The human releases it by r
 - **Released** means the line reads `- Freigegeben von: <name> [YYYY-MM-DD]`: a name other than `Name`, then a real date in square brackets (`Freigegeben von: Erika Muster [2026-10-24]`). A spec without the block is released by a line `Status: freigegeben (<YYYY-MM-DD>)` with a real date. Nothing else is a Freigabe: not a `ready-for-agent` label on the spec, not an `Entwurf` line or `Status: entwurf`, not a date without a name in the block.
 - **A spec** is an issue whose body has the `## Freigabe` block, a `## Problem Statement` or `## User Stories` section, or a line starting with `Status:`, or that has sub-issues.
 
+## Specs in the repo
+
+When the config has a `## Specs` section, specs are files in the repo, not issues. Its lines are looked up by name: below, `Specs: <line>` is the command or rule of that line (`Specs: Check`, `Specs: Release`). Without the section, nothing of this applies.
+
+- **The spec of a ticket** is the file its `Spec:` line names, as `Specs: Spec of a ticket` says, read from `origin/<integration>`. Wherever this file says parent spec, it means that file; a ticket without a `Spec:` line has none. Its `Kriterien:` line lists the criteria (`AC-<n>`) it delivers: they are its acceptance criteria.
+- **Released** means what `Specs: Released` says, nothing else: not a draft PR, not a merged spec in `entwurf`.
+- The `## Freigabe` block and spec issues don't exist: every issue is a ticket.
+- A spec file changes only by the human and the spec's commands. No builder edits it, and only **Draft spec** and **/factory close** run its commands.
+
 ## Linear history
 
 Every job branch is a straight line of commits on top of its base, and stays one: `git rev-list --merges <base>..HEAD` prints nothing, at every step and before every push.
@@ -123,7 +133,12 @@ Every job branch is a straight line of commits on top of its base, and stays one
     - its parent spec (the `## Parent` section or the parent sub-issue) is released, as **Freigabe** defines it;
     - every blocker is closed (`gh api repos/<repo>/issues/<n> --jq .issue_dependencies_summary.blocked_by` is 0, and every issue in a `Blocked by:` line is closed).
 
-    **No parent spec at all** (no `## Parent` section, and `gh api repos/<repo>/issues/<n>/parent` answers 404): when the first two conditions hold, go to **Draft spec** instead of stopping. Open blockers don't stop the draft, only the build.
+    With **Specs in the repo**, the third and fourth condition read instead:
+    - its `Spec:` line names a file on the integration branch, `git show origin/<integration>:<path>` prints it (`⛔ Spec nicht gemergt`, with `Du musst: <path>: Spec-PR freigeben und mergen, dann /factory #<n>`);
+    - that spec is released (`⛔ Spec nicht freigegeben`, with `Du musst: <path>: freigeben (<Specs: Release>) und mergen, dann /factory #<n>`);
+    - it has a `Kriterien:` line, and each id in it is a criterion of that spec that is not dropped (`entfällt`, `dropped`): `⛔ Kriterien fehlen`, with `Du musst: #<n>: Zeile "Kriterien: AC-<i>, …" ergänzen`, or `⛔ AC-<i> nicht in Spec`, with `Du musst: #<n>: Kriterien an <path> anpassen`.
+
+    **No parent spec at all** (no `## Parent` section, and `gh api repos/<repo>/issues/<n>/parent` answers 404; with **Specs in the repo**, no `Spec:` line): when the first two conditions hold, go to **Draft spec** instead of stopping. Open blockers don't stop the draft, only the build.
 
     If anything else fails, stop without creating anything and end with **Status**: the failed condition as `⛔ <reason>`, the step that fixes it under `Du musst:` (filling in name and date in the spec's `## Freigabe` block, `/to-tickets`, closing a blocker). If `gh` fails, use the fallbacks in `docs/agents/issue-tracker.md`.
 
@@ -145,6 +160,36 @@ A ticket without a parent spec gets one drafted and published as a draft. Nothin
     - Link each ticket as a sub-issue of the spec: `gh api --method POST repos/<repo>/issues/<spec>/sub_issues -F sub_issue_id=<id>`, where `<id>` is the ticket's database id (`gh api repos/<repo>/issues/<n> --jq .id`). If that fails, name the ticket under `Du musst:` so the human links it.
     - Comment on each ticket: `gh issue comment <n> --body "Spec-Entwurf #<spec> angelegt. Gebaut wird nach der Freigabe."`.
 5. **Clean up.** `git worktree remove --force <worktree>` and `rm -rf <scratch>`; there is no branch. The job's bold row in **Status** is `📝 Spec #<spec>`, with `Du musst: #<spec>: <k> Offene Fragen klären, Freigabe ausfüllen, dann /factory #<n>` and each ticket that could not be linked (`#<n> als Sub-Issue von #<spec> verknüpfen`). Or `⛔ <reason>` when there is no spec.
+
+### Draft spec with Specs in the repo
+
+The spec becomes a file on its own branch and a draft PR into the integration branch. Steps 1 and 2 stay; the spec writer reads the config and also writes `<scratch>/criteria.md`. Steps 3 to 5 read:
+
+3. **Check.** Line 1 of `<scratch>/spec.md` is `SPEC: <spec>`, a kebab-case folder name whose spec path (`Specs: Spec of a ticket`, `<path>` below) `origin/<integration>` doesn't have yet; line 3 starts with `# Spec: `; the status line is `Status: entwurf`. `<scratch>/criteria.md` has one line `#<n>: AC-<i>[, AC-<j> …]` per ticket. Otherwise go to step 5 with `⛔ Spec-Entwurf fehlerhaft`.
+4. **Publish.** Check every ticket once more for a `Spec:` line (`gh issue view <n> --json body`); one that has got one in the meantime is left out, and when none is left, go to step 5. Then, in the worktree:
+    - `git switch -c spec/<spec>`; `git ls-remote --exit-code --heads origin spec/<spec>` must find nothing. Otherwise another session drafts a spec of that name: go to step 5 with `⛔ läuft bereits (Branch existiert)`.
+    - Write `tail -n +3 <scratch>/spec.md` to `<path>`, then run `Specs: Check`. If it fails, go to step 5 with `⛔ Spec-Entwurf fehlerhaft` and its output under `Fehler <job>:`.
+    - `git add <path>`, commit as `docs(specs): draft <spec>` with one `Refs #<n>` line per ticket in the body, `git push -u origin spec/<spec>`.
+    - Write `<scratch>/spec-pr.md` (below) and `gh pr create --draft --base <integration> --head spec/<spec> --title "docs(specs): <title>" --body-file <scratch>/spec-pr.md`, `<title>` being line 3 after `# Spec: `. The PR has no `Closes #<n>` line: a spec closes no ticket.
+    - Append both lines to each ticket's body: `{ gh issue view <n> --json body --jq .body; printf '\nSpec: %s\nKriterien: %s\n' '<path>' '<ids>'; } | gh issue edit <n> --body-file -`, `<ids>` from its line in `criteria.md`. If that fails, name the ticket under `Du musst:`.
+    - Comment on each ticket: `gh issue comment <n> --body "Spec-Entwurf in #<pr> (<path>). Gebaut wird nach Freigabe und Merge."`.
+5. **Clean up.** `git worktree remove --force <worktree>`, `git branch -D spec/<spec>` when **Publish** created it (the pushed branch lives on `origin`), `rm -rf <scratch>`. The job's bold row in **Status** is `📝 Spec #<pr>`, with `Du musst: #<pr>: <k> Offene Fragen klären, freigeben (<Specs: Release>), mergen, dann /factory #<n>` and each ticket whose body could not be edited (`#<n>: Zeilen Spec: und Kriterien: ergänzen`). Or `⛔ <reason>` when there is no PR.
+
+`<scratch>/spec-pr.md`, in German:
+
+```markdown
+Spec-Entwurf der Factory für #<n>[, #<m> …]. Gebaut wird nach Freigabe und Merge.
+
+## Offene Fragen
+
+<the spec's open questions, verbatim>
+
+## Freigabe
+
+1. Offene Fragen in `<path>` auf diesem Branch klären.
+2. `<Specs: Release>` auf diesem Branch, committen, pushen.
+3. PR auf ready setzen und mergen, dann `/factory #<n>[ #<m> …]`.
+```
 
 ## /factory fix <description>
 
@@ -255,6 +300,15 @@ Closes the tickets of merged factory PRs, once the human says they are done with
 
     None left: `gh issue close <spec> --reason completed --comment "Alle Tickets erledigt: #<n>, #<m> …. Geschlossen mit /factory close."`, naming every ticket of the spec. Otherwise the spec stays open, with its open tickets in **Close**.
 
+    With **Specs in the repo**, a spec is never closed; it is marked as done instead. A ticket's spec is its `Spec:` line, also for a closed ticket (`gh issue view <n> --json body`). The open tickets of a spec at `<path>`, `<spec>` being its folder name: `gh issue list --state open --search "\"<path>\" in:body" --limit 200 --json number,body`, filtered on a `Spec: <path>` line. None left, and the status line of `git show origin/<integration>:<path>` is `freigegeben`:
+    - Skip it when `git ls-remote --exit-code --heads origin docs/spec-<spec>-done` finds the branch: its PR is open already (`gh pr list --head docs/spec-<spec>-done`).
+    - `git worktree add -b docs/spec-<spec>-done <main>/../<name>-factory/spec-<spec>-done origin/<integration>`, and there run `Specs: Done`.
+    - It fails when a criterion has no test: no PR, and the Spec column reads `<spec> ⛔ AC-<n> ohne Test`, with the first id of its output.
+    - It passes: commit `<path>` as `docs(specs): mark <spec> as implemented`, `git push -u origin docs/spec-<spec>-done`, `gh pr create --base <integration> --head docs/spec-<spec>-done --title "docs(specs): mark <spec> as implemented" --body "Alle Tickets der Spec erledigt: #<n>, #<m> …. Angelegt mit /factory close."`, ready, not a draft.
+    - Either way, remove that worktree (`git worktree remove --force`) and `git branch -D docs/spec-<spec>-done`.
+
+    A spec that is `umgesetzt` already, or back in `entwurf`, needs nothing.
+
 5. Answer with **Close**: one row per PR with the tickets you closed and its spec, closed or with its open tickets.
 
 Close only tickets a merged PR names in a `Closes #<n>` line; a ticket of an open or closed-unmerged PR stays open. Close a spec only when none of its tickets is open.
@@ -268,7 +322,7 @@ Fixed words, nothing else in their place:
 - **Job label**: its ticket numbers, `#142`, a bundle `#143+#147`; a small fix without a ticket: `fix <slug>`.
 - **Agent**: `builder`, `security`, `code`, `spec-writer`, each with its round: `builder 2`, `security 1`. A rework builder counts from 1 again; a rebase is `builder <n> Rebase`. The retro is `retro`, without a round.
 - **Agent result**: `✓` (READY, PASS), `✓ <k> Commits` for a builder, `✓ Entwurf` for the spec writer, `✓ <k> Befunde` for the retro (`✓ 1 Befund`, `✓ keine Befunde`), `✗ <k> Findings: <main finding>` (CHANGES), singular for one (`✓ 1 Commit`, `✗ 1 Finding: …`), `⛔ <reason>` (BLOCKED, failure), `🔄 läuft` (spawned, not finished).
-- **Job result**: `🔄` (running), `✅ #<pr>` (PR ready), `⚠️ #<pr> Draft` (PR needs a human), `📝 Spec #<n>` (spec drafted), `⛔ <reason>` (no PR).
+- **Job result**: `🔄` (running), `✅ #<pr>` (PR ready), `⚠️ #<pr> Draft` (PR needs a human), `📝 Spec #<n>` (spec drafted: its issue, or its PR with **Specs in the repo**), `⛔ <reason>` (no PR).
 - A `<reason>` or `<main finding>` has at most six words and names the cause, not the step: `Blocker #158 offen`, `Spec #120 nicht freigegeben`, `läuft bereits`, `pnpm install fehlgeschlagen`, `Tenant-Filter fehlt`.
 
 ### Start
@@ -367,5 +421,7 @@ The whole answer of `/factory close`:
 | #513 | #150 | #121 offen: #151, #152 |
 | #514 | – | ⛔ nicht gemergt |
 ```
+
+With **Specs in the repo**, the Spec column names the spec's folder: `task-notes umgesetzt: #530` (the done PR), `task-notes offen: #151, #152`, `task-notes ⛔ AC-3 ohne Test`, `task-notes bereits umgesetzt`, `task-notes entwurf`.
 
 Nothing closed: `Factory close · nichts zu schließen`.

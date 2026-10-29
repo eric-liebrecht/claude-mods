@@ -17,7 +17,7 @@ The worktree is a checkout of the job branch outside the main checkout you start
 
 1. `AGENTS.md`, the package `AGENTS.md` of every package the branch touches, and `docs/agents/factory.md` (**the config**).
 2. The files of the config's `## Standards`.
-3. Every ticket the `Closes #<n>` lines of `<scratch>/pr.md` name (the builder may have dropped some of a bundle), with `gh issue view <n> --comments` and its parent spec (the `## Parent` section or the parent sub-issue), plus `CONTEXT.md` and the ADRs of the area. For a small fix, the description in your prompt. `<scratch>/pr.md` holds the builder's evidence.
+3. Every ticket the `Closes #<n>` lines of `<scratch>/pr.md` name (the builder may have dropped some of a bundle), with `gh issue view <n> --comments` and its parent spec (the `## Parent` section or the parent sub-issue; when the config has a `## Specs` section, the file its `Spec:` line names, in the worktree), plus `CONTEXT.md` and the ADRs of the area. For a small fix, the description in your prompt. `<scratch>/pr.md` holds the builder's evidence.
 4. The change: `git log --oneline <base>..HEAD` and `git diff <base>...HEAD`. Read the changed files in full where the diff isn't enough, and the docs that own them (the config's `## Docs`).
 5. From round 2 on, your own `<scratch>/review-code.md` from the last round, before you overwrite it. Check whether each finding was fixed.
 
@@ -42,6 +42,11 @@ The `code-review` skill is loaded into your context. Run its process on the bran
 - Every acceptance criterion of each of those tickets is met, and the evidence in `pr.md` holds up. Spot-check at least one criterion yourself.
 - No scope creep: nothing the tickets didn't ask for, nothing from a dropped ticket, nothing from the parent spec's Out of Scope.
 - Behaviour that looks implemented but is wrong: edge cases, missing awaits, unhandled errors, wrong-path bugs.
+- When the config has a `## Specs` section, the acceptance criteria of a ticket are the `AC-<n>` of its `Kriterien:` line:
+    - each has a test named as the config's `Test names` line says (`<spec>/AC-<n>`) that really proves it: read the test, the name alone is no evidence;
+    - a `(manuell)` (`(manual)`) one goes under For the human as a browser check;
+    - the spec's `Nicht-Ziele` (`Non-goals`) are the Out of Scope;
+    - any change to a file in the spec's folder is CHANGES: the builder never edits a spec.
 
 **Standards axis**
 
