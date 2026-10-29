@@ -26,7 +26,7 @@ Skills for Claude Code, installed into a project with the [skills CLI](https://g
 | [factory](./skills/factory/SKILL.md)                                                                                                       | Software factory: `/factory #<issue>` builds a released ticket AFK in a throwaway worktree (builder, security and code review), opens a PR and ends with a retro per built job. The label `factory-in-progress` marks tickets the factory has taken on until `/factory close`, so several sessions can run it on one repo in parallel. |
 | `implement`, `tdd`, `pr`, `code-review`, `to-spec`, `retro`, `diagnosing-bugs`, `codebase-design`, `domain-modeling`, `writing-for-agents` | The skills of [mattpocock/skills](https://github.com/mattpocock/skills) the factory and its agents call, copied unchanged, so the factory runs on the versions it was written against.                                                                                                                                                 |
 
-The factory has five agents (`builder`, `reviewer-code`, `reviewer-security`, `spec-writer`, `retro`) in [skills/factory/subagents/](./skills/factory/subagents/); the retro reads the other agents' transcripts condensed by [scripts/transcript.mjs](./skills/factory/scripts/transcript.mjs). The factory reads what is special about a repo from `docs/agents/factory.md` (template: [skills/factory/config.md](./skills/factory/config.md)). Specs are issues by default; with a `## Specs` section there, they are files in the repo: the factory drafts one as a draft PR, builds from the released file and marks it implemented on `/factory close`.
+The factory has five agents (`builder`, `reviewer-code`, `reviewer-security`, `spec-writer`, `retro`) in [skills/factory/subagents/](./skills/factory/subagents/); the retro reads the other agents' transcripts condensed by [scripts/transcript.mjs](./skills/factory/scripts/transcript.mjs), and [scripts/session-title.mjs](./skills/factory/scripts/session-title.mjs) names the session. The factory reads what is special about a repo from `docs/agents/factory.md` (template: [skills/factory/config.md](./skills/factory/config.md)). Specs are issues by default; with a `## Specs` section there, they are files in the repo: the factory drafts one as a draft PR, builds from the released file and marks it implemented on `/factory close`.
 
 ### Install with versions (pnpm)
 
@@ -53,4 +53,27 @@ mkdir -p .claude/agents && cp .claude/skills/factory/subagents/*.md .claude/agen
 cp .claude/skills/factory/config.md docs/agents/factory.md   # then fill it in
 ```
 
-The [Platform Cookbook](https://github.com/eric-liebrecht/platform-cookbook) does all three steps in `platform-cookbook skills`. Don't install the same skills from `mattpocock/skills` as well, or the lock holds two sources for one name.
+The [Platform Cookbook](https://github.com/eric-liebrecht/platform-cookbook) does all three steps in `platform-cookbook skills`, plus the hook of [Session title](#session-title). Don't install the same skills from `mattpocock/skills` as well, or the lock holds two sources for one name.
+
+### Session title
+
+The factory names its session after the job (`Factory · #142 Bewertungsfilter`). In a local session a hook does it, registered once in the project's `.claude/settings.json`; in a cloud session the factory sets the title itself:
+
+```json
+{
+	"hooks": {
+		"UserPromptSubmit": [
+			{
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node \"$CLAUDE_PROJECT_DIR/.claude/skills/factory/scripts/session-title.mjs\""
+					}
+				]
+			}
+		]
+	}
+}
+```
+
+The hook answers only `/factory` prompts and reads the issue titles with `gh`; every other prompt passes untouched.

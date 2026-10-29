@@ -41,6 +41,14 @@ Entfernt wird es nur von /factory close.
 Die Factory mergt nie und schließt Tickets nur mit /factory close.
 ```
 
+## Session title
+
+The session carries the name of what the factory does, so the user finds it among their sessions: `Factory · #142 Bewertungsfilter` (job label and the issue title cut to three words, as in **Start**), `Factory · #142, #150` for several jobs, `Factory · #143+#147 Review-Filter` for a bundle, `Factory · fix <slug>`, `Factory · rework #<pr>`, `Factory · close`. `/factory help` keeps the name it has.
+
+- In a local session the hook `scripts/session-title.mjs` sets it from the `/factory` prompt before you start (`UserPromptSubmit`, `sessionTitle`); the repo registers it once in `.claude/settings.json` (README of claude-mods).
+- When a tool that sets the session title is available, call it right after **Start** with the title of the jobs that started, also for `/factory next`, whose tickets the hook cannot know. In a cloud session that is `set_session_title` of the `claude-code-remote` server (load it with ToolSearch when it is deferred), with the id `get_session` without arguments returns.
+- Neither available: go on without it. The title never appears in a message to the user.
+
 ## The loop
 
 ```
