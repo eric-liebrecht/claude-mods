@@ -48,6 +48,18 @@ Write `None.` when the repo has no database schema. Otherwise:
 
 How code and docs stay in sync, so that the builder updates the docs in the same commit and the reviewer can check it: where the docs live, how to find the doc that owns a file, which index or log to update.
 
+## Specs
+
+Optional: leave this section out when specs are issues (the factory's `## Freigabe` block). With it, specs are files in this repo; the factory finds each line by the name before its colon.
+
+- Spec of a ticket: the file its `Spec:` line names (`docs/specs/<spec>/spec.md`), read from the integration branch. Its `Kriterien:` line lists the acceptance criteria (`AC-<n>`) the ticket delivers.
+- Released: the spec's `Status:` line reads `freigegeben (<date>, …)` or `umgesetzt (<date>, …)`.
+- New: `<command>` writes `docs/specs/<spec>/spec.md` from `docs/specs/TEMPLATE.md`.
+- Check: `<command that checks every spec and fails on a finding>`
+- Release (only the human, or an agent on the human's explicit word): `<command that releases <spec>>`
+- Done: `<command that marks <spec> as implemented and fails when a criterion has no test>`
+- Test names: every test that proves a criterion names it as `<spec>/AC-<n>`.
+
 ## Standards
 
 Files the code reviewer reads for the Standards axis, besides `AGENTS.md` and the package `AGENTS.md` files:

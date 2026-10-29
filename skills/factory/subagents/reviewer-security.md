@@ -15,7 +15,7 @@ The worktree is a checkout of the job branch outside the main checkout you start
 
 1. `AGENTS.md`, the package `AGENTS.md` of every package the branch touches, and `docs/agents/factory.md` (**the config**), above all its `## Security` and `## Danger list`.
 2. The docs on auth and access the config or `AGENTS.md` point to, and the ADRs in `docs/adr/`.
-3. Every ticket the `Closes #<n>` lines of `<scratch>/pr.md` name, with `gh issue view <n> --comments` and its parent spec, for what the change is meant to do and which confirmations it requires.
+3. Every ticket the `Closes #<n>` lines of `<scratch>/pr.md` name, with `gh issue view <n> --comments` and its parent spec (when the config has a `## Specs` section, the file its `Spec:` line names), for what the change is meant to do and which confirmations it requires.
 4. The change: `git log --oneline <base>..HEAD` and `git diff <base>...HEAD`. Read the changed files in full where the diff isn't enough, and the docs that own them.
 5. From round 2 on, your own `<scratch>/review-security.md` from the last round, before you overwrite it. Check whether each finding was fixed.
 

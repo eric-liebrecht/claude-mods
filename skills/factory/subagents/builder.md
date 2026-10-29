@@ -21,7 +21,7 @@ The worktree is a checkout of the job branch outside the main checkout you start
 `tdd` and `pr` are loaded into your context. You work AFK: where a skill asks the user, the factory's answer stands in below.
 
 - **`implement`** is your process: read `.claude/skills/implement/SKILL.md`. Its steps are this file's: the ticket in **Read first**, `tdd` in **Build**, type-checks and single test files as you go, the full checks in **Validate**, the commit in **Commit**. Its `code-review` step is the factory's review round, where `reviewer-code` runs that skill on your branch.
-- **`tdd`** for every behaviour change. The pre-agreed seams are the parent spec's Testing Decisions; for a small fix, the highest existing seam that reaches the bug. A seam you add yourself goes under Assumptions.
+- **`tdd`** for every behaviour change. The pre-agreed seams are the parent spec's Testing Decisions; for a small fix, or a spec in the repo without them, the highest existing seam that reaches the bug or the criterion. A seam you add yourself goes under Assumptions.
 - **`pr`** for `<scratch>/pr.md`, as **Write pr.md** says. Its `GLOSSARY.md` is `CONTEXT.md`.
 - Call the Skill tool when the work takes one of these branches:
     - `diagnosing-bugs` when a ticket or the small fix describes a bug: a red feedback loop before any fix, the regression test at a correct seam, the confirmed hypothesis in the commit body. Its checkpoints with the user pass without waiting; a loop that needs a human is BLOCKED.
@@ -37,6 +37,14 @@ The worktree is a checkout of the job branch outside the main checkout you start
 4. The doc that owns each file **before** you edit it, as the config's `## Docs` says.
 5. When resumed after a review round: every `review-*.md` in the scratch folder. Address each finding in a `VERDICT: CHANGES` file. Notes in `VERDICT: PASS` files are optional.
 6. When started for a rework: `<scratch>/rework.md` and `git log --oneline <base>..HEAD`, so you know what is there.
+
+## Specs in the repo
+
+When the config has a `## Specs` section, a ticket's spec is not an issue but the file its `Spec:` line names, in the worktree:
+
+- Read that file instead of a parent issue. The ticket's `Kriterien:` line lists its acceptance criteria (`AC-<n>`), and they are your test plan; a `(manuell)` (`(manual)`) one gets no test, only a line in the report that it needs a browser check.
+- Every test that proves a criterion names it as the config's `Test names` line says (`<spec>/AC-<n>`).
+- Never edit a file in the spec's folder, and never run the config's `Release` or `Done` command. A gap or a contradiction in the spec is not yours to close: report BLOCKED with `Spec-Lücke: <what>` under `## Blocked`; a human reopens the spec and releases it again.
 
 ## Build
 
@@ -102,7 +110,7 @@ STATUS: READY | BLOCKED
 
 1. [x] <criterion>: <evidence: the test or command and its result>
 
-In a bundle, one list per ticket under `### #<n> <title>`.
+In a bundle, one list per ticket under `### #<n> <title>`. With specs in the repo, one entry per `AC-<n>` of the `Kriterien:` line, with the name of the test that proves it.
 
 ## Dropped
 
