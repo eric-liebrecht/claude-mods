@@ -3,7 +3,7 @@ import type { Register } from 'claude-code'
 
 import type { Activity, CacheStats, CrewAgent, Issue, MainState } from '../types'
 import {
-  GOLD, HUES, INK, MUTED, PANE_BG, RED, RING_COLUMNS, RING_ROWS, SOFT, SPRITE_COLUMNS, SPRITE_ROWS,
+  GOLD, HUES, INK, MUTED, PANE_BG, RED, RING_COLUMNS, RING_ROWS, SOFT, SPRITE_BG, SPRITE_COLUMNS, SPRITE_ROWS,
   barSpan, barSvg, ringCells, ringSvg, spriteCells,
 } from './gfx'
 import type { Hue } from './gfx'
@@ -174,6 +174,8 @@ const totalOf = (tok: Record<string, number>) => Object.values(tok).reduce((a, b
 const shareOf = (n: number | undefined, sum: number) => (sum > 0 ? Math.round(((n ?? 0) / sum) * 100) : 0)
 // Longest status or task line on a card; it must stay one line.
 const CARD_TEXT = 48
+// Rows of the screen a docked pane leaves to the engine: prompt, status lines, its own title.
+const PANE_CHROME = 9
 
 // The three agents of `/crew demo`, each working through a few tools. Orange, green, blue as named.
 const DEMO = [
@@ -247,30 +249,34 @@ const clockTime = (ms: number) => {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
-// The drawings of one render, in whatever its surface can draw: every surface but the terminal has
-// Svg, the terminal has Raster.
-function drawings({ Box, Svg, Raster }: any) {
+// The drawings of one render, in whatever its surface can draw. Ask the surface, not the table: an
+// element a surface lacks can still resolve, to a stub that draws nothing, so `Svg ?` is true on the
+// terminal and blanks every drawing there.
+function drawings({ Box, Svg, Raster }: any, surface: string) {
+  const vector = surface !== 'terminal'
   return {
     sprite: (key: string, source: string, alt: string, bg?: string) =>
-      Svg ? (
+      vector ? (
         <Svg source={source} alt={alt} width={60} height={50} />
       ) : (
-        <Raster key={key} columns={SPRITE_COLUMNS} rows={SPRITE_ROWS} cells={spriteCells(source, bg)} />
+        <Box width={SPRITE_COLUMNS} flexShrink={0}>
+          <Raster key={key} columns={SPRITE_COLUMNS} rows={SPRITE_ROWS} cells={spriteCells(source, bg)} />
+        </Box>
       ),
     // The terminal's bar is boxes, so it takes the room its card has at any pane width.
     bar: (pct: number, hue: Hue, pulse?: number, width = 180) => {
-      if (Svg) return <Svg source={barSvg(pct, hue, pulse)} alt={`${pct} Prozent`} width={width} height={10} />
+      if (vector) return <Svg source={barSvg(pct, hue, pulse)} alt={`${pct} Prozent`} width={width} height={10} />
       const [offset, fill] = barSpan(pct, pulse)
       return (
         <Box flexDirection="row" flexGrow={1} height={1} minWidth={8} backgroundColor={hue.track}>
-          {offset > 0 && <Box flexGrow={offset} flexBasis={0} />}
-          {fill > 0 && <Box flexGrow={fill} flexBasis={0} backgroundColor={hue.fg} />}
-          {offset + fill < 100 && <Box flexGrow={100 - offset - fill} flexBasis={0} />}
+          {offset > 0 && <Box flexGrow={offset} />}
+          {fill > 0 && <Box flexGrow={fill} backgroundColor={hue.fg} />}
+          {offset + fill < 100 && <Box flexGrow={100 - offset - fill} />}
         </Box>
       )
     },
     ring: (key: string, pct: number | null, hue: Hue, text: string) =>
-      Svg ? (
+      vector ? (
         <Svg source={ringSvg(pct, hue, text)} alt={`${text}`} width={64} height={64} />
       ) : (
         <Raster key={key} columns={RING_COLUMNS} rows={RING_ROWS} cells={ringCells(pct, hue, text)} />
@@ -293,7 +299,7 @@ function cacheNow(c: CacheStats, now: number, ttlMs: number) {
 }
 
 // The cache in one line, for the band above the prompt.
-function cacheLine(ui: any, c: CacheStats, now: number, ttlMs: number) {
+function cacheLine(ui: any, surface: string, c: CacheStats, now: number, ttlMs: number) {
   const { Box, Text } = ui
   const s = cacheNow(c, now, ttlMs)
   if (!s) return <Text dimColor>Cache: noch keine Daten</Text>
@@ -301,7 +307,7 @@ function cacheLine(ui: any, c: CacheStats, now: number, ttlMs: number) {
   return (
     <Box flexDirection="row" alignItems="center" width={72}>
       <Text dimColor>Cache </Text>
-      <Box flexGrow={1} flexShrink={1} flexDirection="row">{drawings(ui).bar(s.remaining, s.hue, undefined, 100)}</Box>
+      <Box flexGrow={1} flexShrink={1} flexDirection="row">{drawings(ui, surface).bar(s.remaining, s.hue, undefined, 100)}</Box>
       <Text bold color={s.hue.fg}> {s.remaining}%</Text>
       <Text dimColor>
         {warm ? ` · Treffer ${s.hit}% · bis ${clockTime(s.expiresAt)}` : ` · kalt seit ${ago(-s.left)} · nächster Prompt schreibt neu`}
@@ -586,18 +592,18 @@ export const register: Register = on => {
     const list = s.list.filter(a => isLive(a) || (a.endedAt !== undefined && now - a.endedAt < 8000))
     const ui = $.ui.resolve(e) as any
     const { Box, Text, Button } = ui
-    const draw = drawings(ui)
+    const draw = drawings(ui, e.surface)
     const open = () => $.ui.open(OPEN)
     const sum = totalOf(s.tok)
 
     const critter = (id: string, source: string, name: string, status: string, hue: Hue, pulse?: number) => (
-      <Box key={`agent-${id}`} flexDirection="row" marginRight={3}>
+      <Box key={`agent-${id}`} flexDirection="row" marginRight={2}>
         {draw.sprite(`band-${id}`, source, status)}
-        <Box flexDirection="column" marginLeft={1} width={22}>
+        <Box flexDirection="column" marginLeft={1} width={18}>
           <Button key={`open-${id}`} plain onPress={open}>
-            <Text bold color={hue.fg}>{clip(name, 20)}</Text>
+            <Text bold color={hue.fg}>{clip(name, 18)}</Text>
           </Button>
-          <Text dimColor>{clip(status, 22)}</Text>
+          <Text dimColor>{clip(status, 18)}</Text>
           <Box flexDirection="row">{draw.bar(shareOf(s.tok[id], sum), hue, pulse, 120)}</Box>
         </Box>
       </Box>
@@ -610,14 +616,14 @@ export const register: Register = on => {
         {stepper($, Box, Text, Button, s.active, s.t % 2, s.ranRetro)}
         <Box flexDirection="row" flexWrap="wrap" alignSelf="flex-start" marginTop={1}>
           {critter(MAIN, BOSS[bossSprite]![s.t % 2]!, 'Claude', bossStatus, GOLD, s.boss.busy ? s.t : undefined)}
-          {list.slice(0, 4).map(a => {
+          {list.slice(0, 3).map(a => {
             const sprite = spriteFor(a, (s.acts[a.id] ?? []).slice(-1)[0], now)
             const status = [LABEL[sprite], modelName(s.mods[a.id])].filter(Boolean).join(' · ')
             return critter(a.id, SPRITES[sprite]![s.t % 2]!, s.nm[a.id] ?? a.type, status, hueOf(a.id, s.nm), isLive(a) ? s.t : undefined)
           })}
-          {list.length > 4 && <Text dimColor>+{list.length - 4}</Text>}
+          {list.length > 3 && <Text dimColor>+{list.length - 3}</Text>}
         </Box>
-        <Box marginTop={1}>{cacheLine(ui, s.cs, now, s.ttl)}</Box>
+        <Box marginTop={1}>{cacheLine(ui, e.surface, s.cs, now, s.ttl)}</Box>
       </Box>
     )
   })
@@ -625,7 +631,7 @@ export const register: Register = on => {
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const ui = $.ui.resolve(e) as any
     const { Box, Text, Button } = ui
-    const draw = drawings(ui)
+    const draw = drawings(ui, e.surface)
     const now = await $.clock.now()
     const { list, acts, t, lk, iss, tok, active, cs, ttl, mods, nm, boss, ranRetro } = await snapshot($, now)
     const running = list.filter(isLive)
@@ -633,6 +639,12 @@ export const register: Register = on => {
     const sum = totalOf(tok)
 
     const issueLine = (n: number) => `#${n} ${iss[String(n)]?.title || '…'}`
+    const issueCount = Math.min(Object.keys(iss).length, 8)
+
+    // Rows the pane's body needs with framed cards, against what the surface leaves it. Short of
+    // room the cards give up their frames, so the gauges below them stay in view.
+    const needed = 6 + (running.length + 1) * 7 + done.length + (issueCount > 0 ? issueCount + 2 : 0) + RING_ROWS + 2
+    const slim = needed > (e.viewport?.rows ?? Infinity) - PANE_CHROME
 
     // One agent: critter on the left, then name and badge, status, task, and its share of the tokens.
     type Card = {
@@ -644,12 +656,13 @@ export const register: Register = on => {
         key={`card-${c.id}`}
         flexDirection="row"
         alignItems="center"
-        borderStyle="round"
-        borderColor={c.hue.fg}
+        {...(slim ? {} : { borderStyle: 'round', borderColor: c.hue.fg })}
         backgroundColor={c.hue.tint}
-        paddingX={1}
+        paddingRight={1}
+        paddingLeft={slim ? 0 : 1}
       >
-        <Box marginRight={2}>{draw.sprite(`sprite-${c.id}`, c.source, c.status, c.hue.tint)}</Box>
+        {slim && <Box width={1} height={SPRITE_ROWS} marginRight={1} backgroundColor={c.hue.fg} />}
+        <Box marginRight={2} flexShrink={0}>{draw.sprite(`sprite-${c.id}`, c.source, c.status, SPRITE_BG)}</Box>
         <Box flexDirection="column" flexGrow={1} flexShrink={1}>
           <Box flexDirection="row" justifyContent="space-between">
             <Box flexDirection="row">
@@ -658,8 +671,8 @@ export const register: Register = on => {
             </Box>
             <Text color={c.hue.fg}>{c.badge}</Text>
           </Box>
-          <Text color={c.hue.fg}>{clip(c.status, CARD_TEXT)}</Text>
-          {c.task ? <Text color={SOFT}>{clip(c.task, CARD_TEXT)}</Text> : null}
+          <Text color={c.hue.fg} wrap="truncate">{clip(c.status, CARD_TEXT)}</Text>
+          {c.task ? <Text color={SOFT} wrap="truncate">{clip(c.task, CARD_TEXT)}</Text> : null}
           <Box flexDirection="row" alignItems="center">
             {draw.bar(shareOf(tok[c.id], sum), c.hue, c.pulse)}
             <Text bold color={c.hue.fg}>{` ${kTok(tok[c.id] ?? 0).padStart(5)}`}</Text>
@@ -726,12 +739,13 @@ export const register: Register = on => {
     ]
 
     // A section: a heading with a short summary to its right, then its content.
-    const section = (key: string, title: string, meta: string, body: any) => (
-      <Box key={`sec-${key}`} flexDirection="column" marginBottom={1}>
+    const section = (key: string, title: string, meta: string, body: any, action?: any) => (
+      <Box key={`sec-${key}`} flexDirection="column" marginBottom={slim ? 0 : 1}>
         <Box flexDirection="row" alignItems="center">
           <Text bold color={HUES[4]!.fg}>▍</Text>
           <Text bold color={INK}>{title}</Text>
           {meta ? <Box marginLeft={3}><Text color={SOFT}>{meta}</Text></Box> : null}
+          {action ? <Box marginLeft={3}>{action}</Box> : null}
         </Box>
         {body}
       </Box>
@@ -780,21 +794,19 @@ export const register: Register = on => {
           'flow',
           'Ablauf',
           flowMeta,
-          <Box flexDirection="column">
-            {stepper($, Box, Text, Button, active, t % 2, ranRetro)}
-            <Button
-              key="reset"
-              plain
-              dimColor
-              onPress={async () => {
-                await update($, flow, () => 0)
-                await $.store.set('flow', 0)
-                await update($, retroRan, () => false)
-              }}
-            >
-              ↺ zurücksetzen
-            </Button>
-          </Box>,
+          stepper($, Box, Text, Button, active, t % 2, ranRetro),
+          <Button
+            key="reset"
+            plain
+            dimColor
+            onPress={async () => {
+              await update($, flow, () => 0)
+              await $.store.set('flow', 0)
+              await update($, retroRan, () => false)
+            }}
+          >
+            ↺ zurücksetzen
+          </Button>,
         )}
         {section(
           'crew',
