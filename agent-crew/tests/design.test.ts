@@ -18,11 +18,59 @@ const start = async ($: any, on: any) => {
   return clock
 }
 
-// $.ui.mount draws Raster as an empty fragment, so the terminal's cells are checked at their source.
 const words = (cells: string) => {
   const bytes = Uint8Array.from(atob(cells), c => c.charCodeAt(0))
   return new Uint32Array(bytes.buffer)
 }
+
+test('the terminal mounts every drawing as cells, never as a stub, and flips the frames', async ($, on) => {
+  const clock = await start($, on)
+  const draw = async () => {
+    const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+    const sprite = await ui.find({ type: 'Raster', key: 'sprite-a1' })
+    const boss = await ui.find({ type: 'Raster', key: 'sprite-main' })
+    const rings = await ui.findAll({ type: 'Raster', text: undefined })
+    const svgs = await ui.findAll({ type: 'Svg' })
+    await ui.unmount()
+    return { sprite: sprite?.props.cells as string, boss: boss?.props.cells as string, rings: rings.length, svgs: svgs.length }
+  }
+  await clock.advance(600)
+  const first = await draw()
+  await clock.advance(500)
+  const second = await draw()
+  expect(first.svgs).toBe(0)
+  expect(first.rings).toBe(5) // two critters, three gauges
+  // Not blank: the critter's cells carry half blocks.
+  expect(words(first.sprite).filter((w, i) => i % 3 === 0 && (w === 0x2580 || w === 0x2584)).length).toBeGreaterThan(10)
+  expect(second.sprite).not.toBe(first.sprite)
+  expect(second.boss).not.toBe(first.boss)
+  await clock.advance(500)
+  expect((await draw()).sprite).toBe(first.sprite)
+})
+
+test('short of room the cards lose their frames, with room they keep them', async ($, on) => {
+  const clock = await start($, on)
+  await clock.advance(600)
+  const bordered = async (rows: number) => {
+    const ui = await $.ui.mount({ ...PANE, surface: 'terminal', viewport: { columns: 60, rows } } as any)
+    const card = await ui.find({ key: 'card-a1' })
+    await ui.unmount()
+    expect(card).toBeDefined()
+    return card!.props.borderStyle !== undefined
+  }
+  expect(await bordered(80)).toBe(true)
+  expect(await bordered(24)).toBe(false)
+})
+
+test('the band mounts its critters as cells on the terminal', async ($, on) => {
+  const clock = await start($, on)
+  await clock.advance(600)
+  const band = await $.ui.mount({ plugin: 'agent-crew', surface: 'terminal', component: 'AbovePrompt', props: {} as any })
+  expect(await band.find({ type: 'Raster', key: 'band-a1' })).toBeDefined()
+  expect(await band.find({ type: 'Raster', key: 'band-main' })).toBeDefined()
+  expect(await band.findAll({ type: 'Svg' })).toHaveLength(0)
+  await band.unmount()
+})
 
 test('on the terminal every critter keeps two different frames, in cells the engine takes', () => {
   for (const set of [SPRITES, BOSS]) {

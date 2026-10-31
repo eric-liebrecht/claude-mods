@@ -18,6 +18,9 @@ export const RED: Hue = { fg: '#ff5c5c', tint: '#2e1010', track: '#5c2020' }
 export const MUTED: Hue = { fg: '#7d8590', tint: '#161b22', track: '#2d333b' }
 
 export const PANE_BG = '#0d1117'
+// Behind a card's critter: an exact xterm colour, so under tmux, where the engine clamps to 256
+// colours and Raster and Box round differently, the portrait looks the same.
+export const SPRITE_BG = '#121212'
 export const INK = '#e6edf3'
 export const SOFT = '#9aa7b4'
 
@@ -30,7 +33,9 @@ const rgb = (hex: string) => parseInt(hex.slice(1), 16)
 
 // RasterProps.cells: little-endian u32 triplets [code point, foreground, background], base64.
 const pack = (words: number[]): string => {
-  const bytes = new Uint8Array(Uint32Array.from(words).buffer)
+  const bytes = new Uint8Array(words.length * 4)
+  const view = new DataView(bytes.buffer)
+  words.forEach((word, i) => view.setUint32(i * 4, word >>> 0, true))
   let s = ''
   for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
   return btoa(s)
