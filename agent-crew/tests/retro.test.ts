@@ -22,7 +22,7 @@ test('the retro is optional and Claude is told so', async ($, on) => {
   await setup($, on)
   expect(await retroText($)).toMatch(/optional und nur immer mal wieder/)
   const band = await $.ui.mount({ plugin: 'agent-crew', surface: 'terminal', component: 'AbovePrompt', props: {} as any })
-  expect(await band.find({ type: 'Text', text: /^immer mal wieder$/ })).toBeDefined()
+  expect(await band.find({ type: 'Text', text: /optional · immer mal wieder/ })).toBeDefined()
   await band.unmount()
 })
 
