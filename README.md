@@ -25,6 +25,7 @@ Skills for Claude Code, installed into a project with the [skills CLI](https://g
 | ------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [factory](./skills/factory/SKILL.md)                                                                                                       | Software factory: `/factory #<issue>` builds a released ticket AFK in a throwaway worktree (builder, security and code review), opens a PR and ends with a retro per built job. The label `factory-in-progress` marks tickets the factory has taken on until `/factory close`, so several sessions can run it on one repo in parallel. |
 | `implement`, `tdd`, `pr`, `code-review`, `to-spec`, `retro`, `diagnosing-bugs`, `codebase-design`, `domain-modeling`, `writing-for-agents` | The skills of [mattpocock/skills](https://github.com/mattpocock/skills) the factory and its agents call, copied unchanged, so the factory runs on the versions it was written against.                                                                                                                                                 |
+| `grilling`, `grill-me`, `grill-with-docs`                                                                                                  | The grill skills of [mattpocock/skills](https://github.com/mattpocock/skills), with one change: `grilling` asks every round with `AskUserQuestion`, so in the desktop and web app the questions come as a pop-up to click; other clients get plain text. `grill-me` and `grill-with-docs` only call it. |
 
 The factory has five agents (`builder`, `reviewer-code`, `reviewer-security`, `spec-writer`, `retro`) in [skills/factory/subagents/](./skills/factory/subagents/); the retro reads the other agents' transcripts condensed by [scripts/transcript.mjs](./skills/factory/scripts/transcript.mjs), and [scripts/session-title.mjs](./skills/factory/scripts/session-title.mjs) names the session. The factory reads what is special about a repo from `docs/agents/factory.md` (template: [skills/factory/config.md](./skills/factory/config.md)). Specs are issues by default; with a `## Specs` section there, they are files in the repo: the factory drafts one as a draft PR, builds from the released file and marks it implemented on `/factory close`.
 
@@ -48,7 +49,8 @@ Without versions, always the newest `main`:
 ```bash
 npx skills@latest add eric-liebrecht/claude-mods --agent claude-code --copy -y \
   --skill factory --skill implement --skill tdd --skill pr --skill code-review --skill to-spec --skill retro \
-  --skill diagnosing-bugs --skill codebase-design --skill domain-modeling --skill writing-for-agents
+  --skill diagnosing-bugs --skill codebase-design --skill domain-modeling --skill writing-for-agents \
+  --skill grilling --skill grill-me --skill grill-with-docs
 mkdir -p .claude/agents && cp .claude/skills/factory/subagents/*.md .claude/agents/
 cp .claude/skills/factory/config.md docs/agents/factory.md   # then fill it in
 ```
