@@ -17,10 +17,11 @@ export const GOLD: Hue = { fg: '#ffd166', tint: '#2b240c', track: '#544611' }
 export const RED: Hue = { fg: '#ff5c5c', tint: '#2e1010', track: '#5c2020' }
 export const MUTED: Hue = { fg: '#7d8590', tint: '#161b22', track: '#2d333b' }
 
-export const PANE_BG = '#0d1117'
 // Behind a card's critter: an exact xterm colour, so under tmux, where the engine clamps to 256
 // colours and Raster and Box round differently, the portrait looks the same.
 export const SPRITE_BG = '#121212'
+// For the dark cards only: what sits on the pane itself takes theme keys, as its background is the
+// surface's, white in a light theme.
 export const INK = '#e6edf3'
 export const SOFT = '#9aa7b4'
 

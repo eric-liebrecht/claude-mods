@@ -3,14 +3,14 @@ import type { Register } from 'claude-code'
 
 import type { Activity, CacheStats, CrewAgent, Issue, MainState } from '../types'
 import {
-  GOLD, HUES, INK, MUTED, PANE_BG, RED, RING_COLUMNS, RING_ROWS, SOFT, SPRITE_BG, SPRITE_COLUMNS, SPRITE_ROWS,
+  GOLD, HUES, INK, MUTED, RED, RING_COLUMNS, RING_ROWS, SOFT, SPRITE_BG, SPRITE_COLUMNS, SPRITE_ROWS,
   barSpan, barSvg, ringCells, ringSvg, spriteCells,
 } from './gfx'
 import type { Hue } from './gfx'
 import { BOSS, SPRITES } from './sprites'
 
 const PANE = 'agent-crew'
-const OPEN = { id: PANE, title: 'Agent Crew', backgroundColor: PANE_BG }
+const OPEN = { id: PANE, title: 'Agent Crew' }
 const agents = atom({ plugin: 'agent-crew', key: 'agents' } as const, [] as CrewAgent[])
 const activity = atom({ plugin: 'agent-crew', key: 'activity' } as const, {} as Record<string, Activity[]>)
 const frame = atom({ plugin: 'agent-crew', key: 'frame' } as const, 0)
@@ -302,14 +302,14 @@ function cacheNow(c: CacheStats, now: number, ttlMs: number) {
 function cacheLine(ui: any, surface: string, c: CacheStats, now: number, ttlMs: number) {
   const { Box, Text } = ui
   const s = cacheNow(c, now, ttlMs)
-  if (!s) return <Text dimColor>Cache: noch keine Daten</Text>
+  if (!s) return <Text color="inactive">Cache: noch keine Daten</Text>
   const warm = s.left > 0
   return (
     <Box flexDirection="row" alignItems="center" width={72}>
-      <Text dimColor>Cache </Text>
+      <Text color="inactive">Cache </Text>
       <Box flexGrow={1} flexShrink={1} flexDirection="row">{drawings(ui, surface).bar(s.remaining, s.hue, undefined, 100)}</Box>
       <Text bold color={s.hue.fg}> {s.remaining}%</Text>
-      <Text dimColor>
+      <Text color="inactive">
         {warm ? ` · Treffer ${s.hit}% · bis ${clockTime(s.expiresAt)}` : ` · kalt seit ${ago(-s.left)} · nächster Prompt schreibt neu`}
       </Text>
     </Box>
@@ -325,21 +325,21 @@ function stepper($: any, Box: any, Text: any, Button: any, active: number, pulse
         const optional = i === RETRO && !ranRetro
         const isDone = i < active && !optional
         const isActive = i === active
-        const color = isDone ? HUES[1]!.fg : isActive ? HUES[4]!.fg : undefined
+        const color = isDone ? 'success' : isActive ? 'suggestion' : 'inactive'
         const mark = optional ? '◌' : isDone ? '✓' : isActive ? (pulse ? '◉' : '●') : '○'
         return (
           <Box key={`step-${i}`} flexDirection="row">
-            {i > 0 && <Text color={i <= active ? HUES[1]!.fg : undefined} dimColor={i > active}> ─ </Text>}
+            {i > 0 && <Text color={i <= active ? 'success' : 'inactive'}> ─ </Text>}
             <Button key={`btn-${i}`} plain onPress={() => $.prompt.fill({ text: `${st.command} `, mode: 'replace' })}>
-              <Text color={color} bold={isActive} dimColor={!isDone && !isActive}>
+              <Text color={color} bold={isActive}>
                 {mark} {st.label}
               </Text>
             </Button>
           </Box>
         )
       })}
-      {!ranRetro && <Text dimColor italic>{`  ${RETRO_NOTE}`}</Text>}
-      {active >= STEPS.length && <Text color={HUES[1]!.fg} bold>{'  Alles erledigt'}</Text>}
+      {!ranRetro && <Text color="inactive" italic>{`  ${RETRO_NOTE}`}</Text>}
+      {active >= STEPS.length && <Text color="success" bold>{'  Alles erledigt'}</Text>}
     </Box>
   )
 }
@@ -370,7 +370,6 @@ async function refreshAll($: any) {
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
-    await $.command.register({ name: 'crew', description: 'Show running sub-agents as pixel critters', argumentHint: '[demo]' })
     void $.ui.open(OPEN)
     demoOn = await read($, demo)
 
@@ -457,7 +456,10 @@ export const register: Register = on => {
     return yield* next(e)
   })
 
-  on('command.run', { command: 'crew' }, async ($, e) => {
+  // commands/crew.md declares the command, so it is listed even where hooks are off: Desktop reads
+  // its list from such a run, and a command registered from a hook is missing there. It is named
+  // agent-crew:crew with `crew` as an alias, and answering here keeps its prompt from the model.
+  on('command.run', { command: 'agent-crew:crew' }, async ($, e) => {
     if (e.args.trim() === 'demo') {
       demoOn = !demoOn
       await update($, demo, () => demoOn)
@@ -601,9 +603,9 @@ export const register: Register = on => {
         {draw.sprite(`band-${id}`, source, status)}
         <Box flexDirection="column" marginLeft={1} width={18}>
           <Button key={`open-${id}`} plain onPress={open}>
-            <Text bold color={hue.fg}>{clip(name, 18)}</Text>
+            <Text bold color="text">{clip(name, 18)}</Text>
           </Button>
-          <Text dimColor>{clip(status, 18)}</Text>
+          <Text color="inactive">{clip(status, 18)}</Text>
           <Box flexDirection="row">{draw.bar(shareOf(s.tok[id], sum), hue, pulse, 120)}</Box>
         </Box>
       </Box>
@@ -621,7 +623,7 @@ export const register: Register = on => {
             const status = [LABEL[sprite], modelName(s.mods[a.id])].filter(Boolean).join(' · ')
             return critter(a.id, SPRITES[sprite]![s.t % 2]!, s.nm[a.id] ?? a.type, status, hueOf(a.id, s.nm), isLive(a) ? s.t : undefined)
           })}
-          {list.length > 3 && <Text dimColor>+{list.length - 3}</Text>}
+          {list.length > 3 && <Text color="inactive">+{list.length - 3}</Text>}
         </Box>
         <Box marginTop={1}>{cacheLine(ui, e.surface, s.cs, now, s.ttl)}</Box>
       </Box>
@@ -724,8 +726,8 @@ export const register: Register = on => {
       const failed = a.status === 'failed' || a.status === 'killed'
       return (
         <Box key={`done-${a.id}`} flexDirection="row" paddingLeft={2}>
-          <Text color={failed ? RED.fg : HUES[1]!.fg}>{failed ? '✗ ' : '✓ '}</Text>
-          <Text color={SOFT}>
+          <Text color={failed ? 'error' : 'success'}>{failed ? '✗ ' : '✓ '}</Text>
+          <Text color="inactive">
             {`${nm[a.id] ?? a.type} · ${sec((a.endedAt ?? now) - a.startedAt)} · ${kTok(tok[a.id] ?? 0)}`}
           </Text>
         </Box>
@@ -742,9 +744,9 @@ export const register: Register = on => {
     const section = (key: string, title: string, meta: string, body: any, action?: any) => (
       <Box key={`sec-${key}`} flexDirection="column" marginBottom={slim ? 0 : 1}>
         <Box flexDirection="row" alignItems="center">
-          <Text bold color={HUES[4]!.fg}>▍</Text>
-          <Text bold color={INK}>{title}</Text>
-          {meta ? <Box marginLeft={3}><Text color={SOFT}>{meta}</Text></Box> : null}
+          <Text bold color="suggestion">▍</Text>
+          <Text bold color="text">{title}</Text>
+          {meta ? <Box marginLeft={3}><Text color="inactive">{meta}</Text></Box> : null}
           {action ? <Box marginLeft={3}>{action}</Box> : null}
         </Box>
         {body}
@@ -752,8 +754,8 @@ export const register: Register = on => {
     )
 
     const STATE: Record<string, { label: string; color: string }> = {
-      OPEN: { label: '● offen', color: HUES[1]!.fg },
-      CLOSED: { label: '● geschlossen', color: HUES[5]!.fg },
+      OPEN: { label: '● offen', color: 'success' },
+      CLOSED: { label: '● geschlossen', color: 'merged' },
     }
     const issueRow = (n: number) => {
       const i = iss[String(n)]
@@ -761,11 +763,11 @@ export const register: Register = on => {
       const st = STATE[(i?.state ?? '').toUpperCase()]
       return (
         <Box key={`issue-${n}`} flexDirection="row" flexWrap="wrap" columnGap={2}>
-          <Text bold color={w.length > 0 ? hueOf(w[0]!.id, nm).fg : SOFT}>#{n}</Text>
+          <Text bold color={w.length > 0 ? 'text' : 'inactive'}>#{n}</Text>
           {st && <Text color={st.color}>{st.label}</Text>}
-          <Text color={i?.title ? INK : SOFT}>{i?.title ? clip(i.title, 60) : 'Titel wird geladen …'}</Text>
+          <Text color={i?.title ? 'text' : 'inactive'}>{i?.title ? clip(i.title, 60) : 'Titel wird geladen …'}</Text>
           {w.map(a => (
-            <Text key={`worker-${n}-${a.id}`} bold color={hueOf(a.id, nm).fg}>
+            <Text key={`worker-${n}-${a.id}`} bold color="text">
               {a.id === MAIN ? 'Claude' : nm[a.id] ?? a.type}
             </Text>
           ))}
@@ -779,8 +781,8 @@ export const register: Register = on => {
     const gauge = (key: string, label: string, pct: number | null, hue: Hue, note: string) => (
       <Box key={`gauge-${key}`} flexDirection="column" alignItems="center" marginRight={3} width={14}>
         {draw.ring(`ring-${key}`, pct, hue, pct === null ? '–' : `${pct}%`)}
-        <Text bold color={hue.fg}>{label}</Text>
-        <Text color={SOFT}>{note}</Text>
+        <Text bold color="text">{label}</Text>
+        <Text color="inactive">{note}</Text>
       </Box>
     )
 
@@ -798,14 +800,13 @@ export const register: Register = on => {
           <Button
             key="reset"
             plain
-            dimColor
             onPress={async () => {
               await update($, flow, () => 0)
               await $.store.set('flow', 0)
               await update($, retroRan, () => false)
             }}
           >
-            ↺ zurücksetzen
+            <Text color="inactive">↺ zurücksetzen</Text>
           </Button>,
         )}
         {section(
@@ -815,7 +816,7 @@ export const register: Register = on => {
           <Box flexDirection="column">
             {mainCard()}
             {running.map(card)}
-            {list.length === 0 && <Text color={SOFT}>Keine Sub-Agents. Es ist ruhig im Bau …</Text>}
+            {list.length === 0 && <Text color="inactive">Keine Sub-Agents. Es ist ruhig im Bau …</Text>}
             {done.map(doneRow)}
           </Box>,
         )}

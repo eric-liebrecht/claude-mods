@@ -5,14 +5,20 @@ import { BOSS, SPRITES } from '../hooks/sprites'
 
 const PANE = { plugin: 'agent-crew', component: 'Pane', requestId: 'agent-crew', props: {} as any } as const
 
-const start = async ($: any, on: any) => {
+const start = async ($: any, on: any, seen: { opened?: any[]; registered?: string[] } = {}) => {
   const clock = mock.clock(on, { now: 1000 })
   on('agent.list', () => ({ value: [
     { id: 'a1', type: 'general-purpose', description: 'Implement #105', status: 'running' },
   ] }) as any)
   on('session.start', (_$: any, e: any) => ({ cwd: e.cwd }))
-  on('command.register', (_$: any, e: any) => ({ value: { command: e.name } }) as any)
-  on('ui.open', () => ({ value: { isPlaced: true } }) as any)
+  on('command.register', (_$: any, e: any) => {
+    seen.registered?.push(e.name)
+    return { value: { command: e.name } } as any
+  })
+  on('ui.open', (_$: any, e: any) => {
+    seen.opened?.push(e)
+    return { value: { isPlaced: true } } as any
+  })
   mock.store(on)
   await $.session.start({ cwd: '/w', surface: 'terminal', isInteractive: true })
   return clock
@@ -117,6 +123,36 @@ test('the gauges show what the session measured, and no data before there is any
   await ui.unmount()
 })
 
+test('what sits on the pane itself follows the theme; only the dark cards use fixed colours', async ($, on) => {
+  const clock = await start($, on)
+  await clock.advance(600)
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const cards = JSON.stringify([await ui.find({ key: 'card-main' }), await ui.find({ key: 'card-a1' })].map(c => c!.children))
+  const onPane = (await ui.findAll({ type: 'Text' })).filter(x => !cards.includes(JSON.stringify(x.text)))
+  expect(onPane.length).toBeGreaterThan(10)
+  for (const x of onPane) {
+    expect(x.props.dimColor).toBeUndefined()
+    expect(String(x.props.color ?? '')).not.toMatch(/^#/)
+  }
+  expect(await ui.find({ type: 'Text', text: /^Agenten$/ })).toMatchObject({ props: { color: 'text' } })
+  await ui.unmount()
+})
+
+test('the pane asks for no background of its own, whatever the theme', async ($, on) => {
+  const opened: any[] = []
+  await start($, on, { opened })
+  expect(opened.length).toBeGreaterThan(0)
+  for (const e of opened) expect(e.backgroundColor).toBeUndefined()
+})
+
+test('/crew demo is answered by the hook, and nothing registers the name a second time', async ($, on) => {
+  const registered: string[] = []
+  await start($, on, { registered })
+  expect(registered).not.toContain('crew')
+  const r = await $.command.run({ command: 'agent-crew:crew', args: '' } as any)
+  expect((r as any).text).toMatch(/pane opened/)
+})
+
 test('/crew demo shows three made-up agents, and a second time the real crew again', async ($, on) => {
   await start($, on)
   const shows = async () => {
@@ -126,8 +162,8 @@ test('/crew demo shows three made-up agents, and a second time the real crew aga
     return names.length
   }
   expect(await shows()).toBe(0)
-  await $.command.run({ command: 'crew', args: 'demo' } as any)
+  await $.command.run({ command: 'agent-crew:crew', args: 'demo' } as any)
   expect(await shows()).toBe(3)
-  await $.command.run({ command: 'crew', args: 'demo' } as any)
+  await $.command.run({ command: 'agent-crew:crew', args: 'demo' } as any)
   expect(await shows()).toBe(0)
 })
