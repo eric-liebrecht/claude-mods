@@ -16,8 +16,7 @@ test('agent cards show a funny name and no longer the running tool call', async 
   await clock.advance(600)
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ plugin: 'agent-crew', surface, component: 'Pane', requestId: 'agent-crew', props: {} as any })
-    const named = (await ui.findAll({ type: 'Text', text: /^[A-ZÄÖÜ][a-zäöü]+-[A-ZÄÖÜ][a-zäöü]+$/ }))
-      .filter(x => x.text !== 'Session-Cache')
+    const named = await ui.findAll({ type: 'Text', text: /^[A-ZÄÖÜ][a-zäöü]+-[A-ZÄÖÜ][a-zäöü]+$/ })
     expect(named).toHaveLength(2)
     expect(named[0]!.text).not.toBe(named[1]!.text)
     expect(await ui.find({ type: 'Text', text: /Implement #105/ })).toBeDefined()
@@ -47,7 +46,8 @@ test('linked issues get their own card with state and the agent working on them'
     expect(await ui.find({ type: 'Text', text: /^#105$/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /^● offen$/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /^Never overwrite a reply$/ })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: /in Arbeit bei/ })).toBeDefined()
+    // The row names who works on it: the agent's name, beside the card that has it as its task.
+    expect((await ui.findAll({ type: 'Text', text: /^[A-ZÄÖÜ][a-zäöü]+-[A-ZÄÖÜ][a-zäöü]+$/ })).length).toBe(2)
     await ui.unmount()
   }
 })

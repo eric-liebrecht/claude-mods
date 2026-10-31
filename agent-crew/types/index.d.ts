@@ -24,6 +24,7 @@ declare module 'claude-code' {
       tick: number
       cacheTtlMs: number
       main: MainState
+      demo: boolean
     }
   }
 }

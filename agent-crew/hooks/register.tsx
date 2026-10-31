@@ -2,9 +2,15 @@ import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
 import type { Activity, CacheStats, CrewAgent, Issue, MainState } from '../types'
+import {
+  GOLD, HUES, INK, MUTED, PANE_BG, RED, RING_COLUMNS, RING_ROWS, SOFT, SPRITE_COLUMNS, SPRITE_ROWS,
+  barSpan, barSvg, ringCells, ringSvg, spriteCells,
+} from './gfx'
+import type { Hue } from './gfx'
 import { BOSS, SPRITES } from './sprites'
 
 const PANE = 'agent-crew'
+const OPEN = { id: PANE, title: 'Agent Crew', backgroundColor: PANE_BG }
 const agents = atom({ plugin: 'agent-crew', key: 'agents' } as const, [] as CrewAgent[])
 const activity = atom({ plugin: 'agent-crew', key: 'activity' } as const, {} as Record<string, Activity[]>)
 const frame = atom({ plugin: 'agent-crew', key: 'frame' } as const, 0)
@@ -31,9 +37,11 @@ const flow = atom({ plugin: 'agent-crew', key: 'flow' } as const, 0)
 // The main agent, kept apart from the crew: busy while a turn of its own runs.
 const main = atom({ plugin: 'agent-crew', key: 'main' } as const, { busy: false, since: 0, turns: 0 } as MainState)
 const MAIN = 'main'
-const MAIN_COLOR = 'yellow'
 // Busy as a plain flag too, for the frame clock, which reads no atoms.
 let mainBusy = false
+// `/crew demo` draws three made-up agents instead of the real crew, for visual checks and recordings.
+const demo = atom({ plugin: 'agent-crew', key: 'demo' } as const, false)
+let demoOn = false
 
 type Step = { label: string; names: string[]; command: string }
 const STEPS: Step[] = [
@@ -62,9 +70,13 @@ const stepOf = (text: string): number => {
   return STEPS.findIndex(st => st.names.includes(m[1]!))
 }
 
-const COLORS = ['magenta', 'cyan', 'yellow', 'green', 'red', 'blue'] as const
 const hash = (s: string) => [...s].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7)
-const colorOf = (id: string) => (id === MAIN ? MAIN_COLOR : COLORS[hash(id) % COLORS.length]!)
+// Hues in the order agents got their names: stable, and different for the first six.
+const hueOf = (id: string, names: Record<string, string>): Hue => {
+  if (id === MAIN) return GOLD
+  const at = Object.keys(names).indexOf(id)
+  return HUES[(at >= 0 ? at : hash(id)) % HUES.length]!
+}
 const isLive = (a: CrewAgent) => a.status === 'running' || a.status === 'waiting' || a.status === 'pending'
 
 // A slightly silly name per agent, so the crew reads like a crew and not like a list of ids.
@@ -141,11 +153,6 @@ const mainAgent = (m: MainState, now: number): CrewAgent => ({
   startedAt: m.since,
 })
 
-const ALT: Record<string, string> = {
-  idle: '💤', think: '💭', read: '📖', search: '🔎', edit: '✏️', bash: '⚡', test: '🏋️',
-  git: '🗄️', build: '🛠️', web: '🌐', agent: '✨', done: '✅', fail: '💥',
-}
-
 const LABEL: Record<string, string> = {
   idle: 'wartet', think: 'denkt', read: 'liest', search: 'sucht', edit: 'schreibt', bash: 'Terminal',
   test: 'testet', git: 'git', build: 'baut', web: 'Web', agent: 'startet Agent', done: 'fertig', fail: 'Fehler',
@@ -163,6 +170,56 @@ const modelName = (m: string | undefined): string => {
 const sec = (ms: number) => `${Math.max(0, Math.floor(ms / 1000))}s`
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
 const kTok = (n: number) => (n >= 1_000_000 ? `${(n / 1e6).toFixed(1)}M` : n >= 1000 ? `${Math.round(n / 1000)}k` : `${n}`)
+const totalOf = (tok: Record<string, number>) => Object.values(tok).reduce((a, b) => a + b, 0)
+const shareOf = (n: number | undefined, sum: number) => (sum > 0 ? Math.round(((n ?? 0) / sum) * 100) : 0)
+// Longest status or task line on a card; it must stay one line.
+const CARD_TEXT = 48
+
+// The three agents of `/crew demo`, each working through a few tools. Orange, green, blue as named.
+const DEMO = [
+  { id: 'demo-code', name: 'Code Agent', model: 'claude-sonnet-5-5', tokens: 84_000, secs: 312, task: 'Baut die neue Pane', tools: ['Edit', 'Bash', 'Read'], command: 'git status' },
+  { id: 'demo-research', name: 'Research Agent', model: 'claude-haiku-5-5', tokens: 52_000, secs: 148, task: 'Liest die Render-API', tools: ['Grep', 'WebFetch', 'Read'], command: '' },
+  { id: 'demo-review', name: 'Review Agent', model: 'claude-opus-5-5', tokens: 31_000, secs: 67, task: 'Prüft den Diff', tools: ['Read', 'Bash', 'Grep'], command: 'bun test' },
+]
+function demoData(now: number, t: number) {
+  const of = <T,>(f: (d: (typeof DEMO)[number]) => T) => Object.fromEntries(DEMO.map(d => [d.id, f(d)]))
+  return {
+    list: DEMO.map(d => ({ id: d.id, type: 'general-purpose', description: d.task, status: 'running', startedAt: now - d.secs * 1000 })) as CrewAgent[],
+    acts: of(d => [{ tool: d.tools[Math.floor(t / 8) % d.tools.length]!, detail: d.command, at: now }]),
+    nm: of(d => d.name),
+    mods: { ...of(d => d.model), [MAIN]: 'claude-opus-5-5' } as Record<string, string>,
+    tok: { ...of(d => d.tokens), [MAIN]: 96_000 } as Record<string, number>,
+    boss: { busy: true, since: now - 95_000, turns: 4 },
+    cs: {
+      last: { read: 182_000, create: 7_500, input: 2_500, at: now - 720_000 },
+      read: 920_000, create: 88_000, input: 12_000,
+    },
+    ttl: 3_600_000,
+    lk: {} as Record<string, number[]>,
+    iss: {} as Record<string, Issue>,
+  }
+}
+
+// Everything a drawing shows; reading it subscribes the drawing to it.
+async function snapshot($: any, now: number) {
+  const s = {
+    list: await read($, agents),
+    acts: await read($, activity),
+    t: await read($, frame),
+    lk: await read($, links),
+    iss: await read($, issues),
+    tok: await read($, tokens),
+    active: await read($, flow),
+    cs: await read($, cache),
+    ttl: await read($, cacheTtl),
+    mods: await read($, models),
+    nm: await read($, names),
+    boss: await read($, main),
+    ranRetro: await read($, retroRan),
+  }
+  await read($, tick)
+  return (await read($, demo)) ? { ...s, ...demoData(now, s.t) } : s
+}
 
 let implementing = false
 async function startStep($: any, i: number) {
@@ -176,7 +233,6 @@ async function startStep($: any, i: number) {
   await $.store.set('flow', i)
 }
 
-  // The flow as a vertical list: done, active, open. A press writes the skill into the prompt.
 const pctOf = (c: { read: number; create: number; input: number }) => {
   const total = c.read + c.create + c.input
   return total > 0 ? Math.round((c.read / total) * 100) : 0
@@ -185,185 +241,99 @@ const ago = (ms: number) => {
   const s = Math.max(0, Math.floor(ms / 1000))
   return s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s / 60)}m` : `${Math.floor(s / 3600)}h`
 }
-// The bar shows how much of the warm time is left, so it runs down.
-const cacheBar = (pct: number) => {
-  const col = pct >= 40 ? GREEN : pct >= 20 ? '#f4c430' : '#ef5350'
-  return (
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 8">` +
-    `<rect width="100" height="8" rx="4" fill="${GRAY}"/>` +
-    `<rect width="${Math.max(pct, pct > 0 ? 6 : 0)}" height="8" rx="4" fill="${col}"/></svg>`
-  )
-}
 
 const clockTime = (ms: number) => {
   const d = new Date(ms)
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
-// Cache line: hit rate of the last main-loop response, and how long the cache stays warm.
-function cacheLine(Box: any, Text: any, Svg: any, c: CacheStats, now: number, ttlMs: number, detailed: boolean) {
-  if (!c.last) return <Text dimColor>Cache: noch keine Daten</Text>
-  const pct = pctOf(c.last)
-  const total = pctOf(c)
+// The drawings of one render, in whatever its surface can draw: every surface but the terminal has
+// Svg, the terminal has Raster.
+function drawings({ Box, Svg, Raster }: any) {
+  return {
+    sprite: (key: string, source: string, alt: string, bg?: string) =>
+      Svg ? (
+        <Svg source={source} alt={alt} width={60} height={50} />
+      ) : (
+        <Raster key={key} columns={SPRITE_COLUMNS} rows={SPRITE_ROWS} cells={spriteCells(source, bg)} />
+      ),
+    // The terminal's bar is boxes, so it takes the room its card has at any pane width.
+    bar: (pct: number, hue: Hue, pulse?: number, width = 180) => {
+      if (Svg) return <Svg source={barSvg(pct, hue, pulse)} alt={`${pct} Prozent`} width={width} height={10} />
+      const [offset, fill] = barSpan(pct, pulse)
+      return (
+        <Box flexDirection="row" flexGrow={1} height={1} minWidth={8} backgroundColor={hue.track}>
+          {offset > 0 && <Box flexGrow={offset} flexBasis={0} />}
+          {fill > 0 && <Box flexGrow={fill} flexBasis={0} backgroundColor={hue.fg} />}
+          {offset + fill < 100 && <Box flexGrow={100 - offset - fill} flexBasis={0} />}
+        </Box>
+      )
+    },
+    ring: (key: string, pct: number | null, hue: Hue, text: string) =>
+      Svg ? (
+        <Svg source={ringSvg(pct, hue, text)} alt={`${text}`} width={64} height={64} />
+      ) : (
+        <Raster key={key} columns={RING_COLUMNS} rows={RING_ROWS} cells={ringCells(pct, hue, text)} />
+      ),
+  }
+}
+
+// What the cache gauges show: warm time left and hit rate of the last main-loop response.
+function cacheNow(c: CacheStats, now: number, ttlMs: number) {
+  if (!c.last) return null
   const expiresAt = c.last.at + ttlMs
   const left = expiresAt - now
-  const isWarm = left > 0
-  const color = !isWarm ? 'red' : left < ttlMs * 0.2 ? 'yellow' : 'green'
-  const remaining = Math.max(0, Math.min(100, Math.round((left / ttlMs) * 100)))
+  return {
+    left,
+    expiresAt,
+    remaining: Math.max(0, Math.min(100, Math.round((left / ttlMs) * 100))),
+    hit: pctOf(c.last),
+    hue: left <= 0 || left < ttlMs * 0.2 ? RED : HUES[3]!,
+  }
+}
+
+// The cache in one line, for the band above the prompt.
+function cacheLine(ui: any, c: CacheStats, now: number, ttlMs: number) {
+  const { Box, Text } = ui
+  const s = cacheNow(c, now, ttlMs)
+  if (!s) return <Text dimColor>Cache: noch keine Daten</Text>
+  const warm = s.left > 0
   return (
-    <Box flexDirection="column" alignItems="center">
-      <Box flexDirection="row" alignItems="center">
-        <Text dimColor>Cache  </Text>
-        {Svg && <Svg source={cacheBar(remaining)} alt={`${remaining} Prozent warm`} width={80} height={8} />}
-        <Text bold color={color}> {remaining}%</Text>
-        <Text dimColor>  Treffer {pct}% · vor {ago(now - c.last.at)}</Text>
-      </Box>
-      <Text color={color} bold={!isWarm || left < ttlMs * 0.2}>
-        {isWarm
-          ? `warm noch ${ago(left)} · läuft ${clockTime(expiresAt)} ab`
-          : `kalt seit ${ago(-left)} · beim nächsten Prompt wird neu geschrieben`}
+    <Box flexDirection="row" alignItems="center" width={72}>
+      <Text dimColor>Cache </Text>
+      <Box flexGrow={1} flexShrink={1} flexDirection="row">{drawings(ui).bar(s.remaining, s.hue, undefined, 100)}</Box>
+      <Text bold color={s.hue.fg}> {s.remaining}%</Text>
+      <Text dimColor>
+        {warm ? ` · Treffer ${s.hit}% · bis ${clockTime(s.expiresAt)}` : ` · kalt seit ${ago(-s.left)} · nächster Prompt schreibt neu`}
       </Text>
-      {detailed && (
-        <Text dimColor>
-          gelesen {kTok(c.last.read)} · neu geschrieben {kTok(c.last.create)} · Session {total}% ({kTok(c.read)} gelesen) · Gültigkeit {ago(ttlMs)}
-        </Text>
-      )}
     </Box>
   )
 }
 
-// One node of the vertical timeline: line above and below, a circle in the middle.
-const GREEN = '#3ddc84'
-const CYAN = '#4cc9f0'
-const GRAY = '#4a4f5c'
-function nodeSvg(i: number, active: number, pulse: number, optional = false): string {
-  const isDone = i < active
-  const isActive = i === active
-  const top = i === 0 ? '' : `<rect x="7" y="0" width="2" height="13" fill="${i <= active ? GREEN : GRAY}"/>`
-  const bottom =
-    i === STEPS.length - 1 ? '' : `<rect x="7" y="27" width="2" height="13" fill="${i < active ? GREEN : GRAY}"/>`
-  let circle: string
-  if (optional) {
-    circle =
-      `<circle cx="8" cy="20" r="6" fill="#0d1117" stroke="${GRAY}" stroke-width="2" stroke-dasharray="3 2"/>` +
-      (isDone ? `<rect x="5" y="19" width="6" height="2" fill="${GRAY}"/>` : '')
-  } else if (isDone) {
-    circle =
-      `<circle cx="8" cy="20" r="7" fill="${GREEN}"/>` +
-      `<path d="M4.8 20.2 L7.2 22.6 L11.4 17.6" stroke="#0d1117" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`
-  } else if (isActive) {
-    circle =
-      `<circle cx="8" cy="20" r="7" fill="#0d1117" stroke="${CYAN}" stroke-width="2"/>` +
-      `<circle cx="8" cy="20" r="${pulse ? 4 : 3}" fill="${CYAN}"/>`
-  } else {
-    circle = `<circle cx="8" cy="20" r="6" fill="none" stroke="${GRAY}" stroke-width="2"/>`
-  }
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 40">${top}${bottom}${circle}</svg>`
-}
-
-// Horizontal variant: circle in the middle of its cell, a line half to each neighbour,
-// so the row is symmetric and centres as a whole.
-const CELL = 120
-function nodeSvgH(i: number, active: number, pulse: number, optional = false): string {
-  const isDone = i < active
-  const isActive = i === active
-  const c = CELL / 2
-  const left = i === 0 ? '' : `<rect x="0" y="8" width="${c - 8}" height="2" fill="${i <= active ? GREEN : GRAY}"/>`
-  const right =
-    i === STEPS.length - 1
-      ? ''
-      : `<rect x="${c + 8}" y="8" width="${c - 8}" height="2" fill="${i < active ? GREEN : GRAY}"/>`
-  let circle: string
-  if (optional) {
-    circle =
-      `<circle cx="${c}" cy="9" r="6" fill="#0d1117" stroke="${GRAY}" stroke-width="2" stroke-dasharray="3 2"/>` +
-      (isDone ? `<rect x="${c - 3}" y="8" width="6" height="2" fill="${GRAY}"/>` : '')
-  } else if (isDone) {
-    circle =
-      `<circle cx="${c}" cy="9" r="7" fill="${GREEN}"/>` +
-      `<path d="M${c - 3.2} 9.2 L${c - 0.8} 11.6 L${c + 3.4} 6.6" stroke="#0d1117" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`
-  } else if (isActive) {
-    circle =
-      `<circle cx="${c}" cy="9" r="7" fill="#0d1117" stroke="${CYAN}" stroke-width="2"/>` +
-      `<circle cx="${c}" cy="9" r="${pulse ? 4 : 3}" fill="${CYAN}"/>`
-  } else {
-    circle = `<circle cx="${c}" cy="9" r="6" fill="none" stroke="${GRAY}" stroke-width="2"/>`
-  }
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${CELL} 18">${left}${right}${circle}</svg>`
-}
-
-// The flow as a vertical timeline: done, active, open. A press writes the skill into the prompt.
-function stepper(
-  $: any, Box: any, Text: any, Button: any, Svg: any, active: number, pulse: number, ranRetro: boolean,
-  horizontal = false,
-) {
-  // A skipped retro shows as skipped, not as done.
-  const stateOf = (i: number) => {
-    const optional = i === RETRO && !ranRetro
-    const isDone = i < active && !optional
-    const isActive = i === active
-    return { optional, isDone, isActive, alt: optional ? (i < active ? 'übersprungen' : 'optional') : isDone ? 'erledigt' : isActive ? 'aktiv' : 'offen' }
-  }
-  if (horizontal) {
-    return (
-      <Box flexDirection="column" alignItems="center">
-      <Box flexDirection="row" justifyContent="center">
-        {STEPS.map((st, i) => {
-          const { optional, isDone, isActive, alt } = stateOf(i)
-          return (
-            <Box key={`step-${i}`} flexDirection="column" alignItems="center">
-              {Svg ? (
-                <Svg source={nodeSvgH(i, active, pulse, optional)} alt={alt} width={CELL} height={18} />
-              ) : (
-                <Text color={isDone ? 'green' : isActive ? 'cyan' : undefined}>{optional ? '◌' : isDone ? '✓' : isActive ? '●' : '○'}</Text>
-              )}
-              <Button key={`btn-${i}`} plain onPress={() => $.prompt.fill({ text: `${st.command} `, mode: 'replace' })}>
-                <Text color={isDone ? 'green' : isActive ? 'cyan' : undefined} bold={isActive} dimColor={!isDone && !isActive}>
-                  {st.label}
-                </Text>
-              </Button>
-              <Text dimColor hover={{ dimColor: false, color: 'cyan' }}>
-                {st.command.replace('/mattpocock-skills:', '/')}
-              </Text>
-              {optional && RETRO_NOTE.split(' · ').map(n => <Text key={n} dimColor italic>{n}</Text>)}
-            </Box>
-          )
-        })}
-      </Box>
-      {active >= STEPS.length && <Text color="green" bold>Alles erledigt</Text>}
-      </Box>
-    )
-  }
+// The flow as one row of chips: done, active, open. A press writes the skill into the prompt.
+function stepper($: any, Box: any, Text: any, Button: any, active: number, pulse: number, ranRetro: boolean) {
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="row" flexWrap="wrap" alignItems="center">
       {STEPS.map((st, i) => {
-        const { optional, isDone, isActive, alt } = stateOf(i)
+        // A skipped retro shows as skipped, not as done.
+        const optional = i === RETRO && !ranRetro
+        const isDone = i < active && !optional
+        const isActive = i === active
+        const color = isDone ? HUES[1]!.fg : isActive ? HUES[4]!.fg : undefined
+        const mark = optional ? '◌' : isDone ? '✓' : isActive ? (pulse ? '◉' : '●') : '○'
         return (
           <Box key={`step-${i}`} flexDirection="row">
-            {Svg ? (
-              <Svg source={nodeSvg(i, active, pulse, optional)} alt={alt} width={16} height={40} />
-            ) : (
-              <Text color={isDone ? 'green' : isActive ? 'cyan' : undefined}>{optional ? '◌' : isDone ? '✓' : isActive ? '●' : '○'}</Text>
-            )}
-            <Box flexDirection="row" alignItems="center" marginLeft={2}>
-              <Button key={`btn-${i}`} plain onPress={() => $.prompt.fill({ text: `${st.command} `, mode: 'replace' })}>
-                <Text color={isDone ? 'green' : isActive ? 'cyan' : undefined} bold dimColor={!isDone && !isActive}>
-                  {st.label}
-                </Text>
-              </Button>
-              <Text dimColor italic hover={{ dimColor: false, color: 'cyan' }}>
-                {'  '}{st.command.replace('/mattpocock-skills:', '/')}
+            {i > 0 && <Text color={i <= active ? HUES[1]!.fg : undefined} dimColor={i > active}> ─ </Text>}
+            <Button key={`btn-${i}`} plain onPress={() => $.prompt.fill({ text: `${st.command} `, mode: 'replace' })}>
+              <Text color={color} bold={isActive} dimColor={!isDone && !isActive}>
+                {mark} {st.label}
               </Text>
-              {optional && (
-                <Text dimColor italic>
-                  {'  · '}{RETRO_NOTE}
-                </Text>
-              )}
-            </Box>
+            </Button>
           </Box>
         )
       })}
-      {active >= STEPS.length && <Text color="green" bold>Alles erledigt</Text>}
+      {!ranRetro && <Text dimColor italic>{`  ${RETRO_NOTE}`}</Text>}
+      {active >= STEPS.length && <Text color={HUES[1]!.fg} bold>{'  Alles erledigt'}</Text>}
     </Box>
   )
 }
@@ -394,8 +364,9 @@ async function refreshAll($: any) {
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
-    await $.command.register({ name: 'crew', description: 'Show running sub-agents as pixel critters' })
-    void $.ui.open({ id: PANE, title: 'Agent Crew' })
+    await $.command.register({ name: 'crew', description: 'Show running sub-agents as pixel critters', argumentHint: '[demo]' })
+    void $.ui.open(OPEN)
+    demoOn = await read($, demo)
 
     $.clock.every(10000, () => update($, tick, n => n + 1))
     void refreshAll($).catch(() => {})
@@ -439,7 +410,7 @@ export const register: Register = on => {
           // shown by type until a name sticks
         }
       }
-      if (live || mainBusy) await update($, frame, n => n + 1)
+      if (live || mainBusy || demoOn) await update($, frame, n => n + 1)
     })
 
     return next(e)
@@ -480,9 +451,13 @@ export const register: Register = on => {
     return yield* next(e)
   })
 
-  on('command.run', { command: 'crew' }, async $ => {
-    await $.ui.open({ id: PANE, title: 'Agent Crew' })
-    return { text: 'Agent Crew pane opened.' }
+  on('command.run', { command: 'crew' }, async ($, e) => {
+    if (e.args.trim() === 'demo') {
+      demoOn = !demoOn
+      await update($, demo, () => demoOn)
+    }
+    await $.ui.open(OPEN)
+    return { text: `Agent Crew pane opened${demoOn ? ' (demo)' : ''}.` }
   })
 
   // A turn of the main agent starts: its critter gets to work.
@@ -602,191 +577,144 @@ export const register: Register = on => {
     return ran
   })
 
-  // Band above the prompt: the flow, and below it one pixel critter per agent.
+  // Band above the prompt: the flow, one critter per agent with its bar, and the cache in a line.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e)
 
     const now = await $.clock.now()
-    const list = (await read($, agents)).filter(a => isLive(a) || (a.endedAt !== undefined && now - a.endedAt < 8000))
-    const active = await read($, flow)
-    const t = await read($, frame)
-    const acts = await read($, activity)
-    const cs = await read($, cache)
-    const ttl = await read($, cacheTtl)
-    const mods = await read($, models)
-    const nm = await read($, names)
-    const boss = await read($, main)
-    const ranRetro = await read($, retroRan)
-    await read($, tick)
-    const { Box, Text, Button, Svg } = $.ui.resolve(e) as any
-    const bossSprite = spriteFor(mainAgent(boss, now), (acts[MAIN] ?? []).slice(-1)[0], now)
+    const s = await snapshot($, now)
+    const list = s.list.filter(a => isLive(a) || (a.endedAt !== undefined && now - a.endedAt < 8000))
+    const ui = $.ui.resolve(e) as any
+    const { Box, Text, Button } = ui
+    const draw = drawings(ui)
+    const open = () => $.ui.open(OPEN)
+    const sum = totalOf(s.tok)
 
+    const critter = (id: string, source: string, name: string, status: string, hue: Hue, pulse?: number) => (
+      <Box key={`agent-${id}`} flexDirection="row" marginRight={3}>
+        {draw.sprite(`band-${id}`, source, status)}
+        <Box flexDirection="column" marginLeft={1} width={22}>
+          <Button key={`open-${id}`} plain onPress={open}>
+            <Text bold color={hue.fg}>{clip(name, 20)}</Text>
+          </Button>
+          <Text dimColor>{clip(status, 22)}</Text>
+          <Box flexDirection="row">{draw.bar(shareOf(s.tok[id], sum), hue, pulse, 120)}</Box>
+        </Box>
+      </Box>
+    )
+
+    const bossSprite = spriteFor(mainAgent(s.boss, now), (s.acts[MAIN] ?? []).slice(-1)[0], now)
+    const bossStatus = [LABEL[bossSprite], s.boss.busy ? sec(now - s.boss.since) : '', modelName(s.mods[MAIN])].filter(Boolean).join(' · ')
     return (
       <Box flexDirection="column" alignItems="center">
-        {stepper($, Box, Text, Button, Svg, active, t % 2, ranRetro, true)}
-        <Box flexDirection="row" justifyContent="flex-start" alignSelf="flex-start" marginTop={1}>
-        <Box key="agent-main" flexDirection="row">
-          {Svg ? (
-            <Svg source={BOSS[bossSprite]![t % 2]!} alt={`Hauptagent ${LABEL[bossSprite]!}`} width={36} height={30} />
-          ) : (
-            <Text>👑{ALT[bossSprite]} </Text>
-          )}
-          <Box flexDirection="column" marginLeft={1}>
-            <Button key="open-main" plain onPress={() => $.ui.open({ id: PANE, title: 'Agent Crew' })}>
-              <Text bold color={MAIN_COLOR}>Claude</Text>
-            </Button>
-            <Text dimColor>
-              {LABEL[bossSprite]}
-              {boss.busy ? ` · ${sec(now - boss.since)}` : ''}
-              {mods[MAIN] ? ` · ${modelName(mods[MAIN])}` : ''}
-            </Text>
-          </Box>
+        {stepper($, Box, Text, Button, s.active, s.t % 2, s.ranRetro)}
+        <Box flexDirection="row" flexWrap="wrap" alignSelf="flex-start" marginTop={1}>
+          {critter(MAIN, BOSS[bossSprite]![s.t % 2]!, 'Claude', bossStatus, GOLD, s.boss.busy ? s.t : undefined)}
+          {list.slice(0, 4).map(a => {
+            const sprite = spriteFor(a, (s.acts[a.id] ?? []).slice(-1)[0], now)
+            const status = [LABEL[sprite], modelName(s.mods[a.id])].filter(Boolean).join(' · ')
+            return critter(a.id, SPRITES[sprite]![s.t % 2]!, s.nm[a.id] ?? a.type, status, hueOf(a.id, s.nm), isLive(a) ? s.t : undefined)
+          })}
+          {list.length > 4 && <Text dimColor>+{list.length - 4}</Text>}
         </Box>
-        {list.length > 0 && (
-          <Box marginX={3}>
-            <Text dimColor>│</Text>
-          </Box>
-        )}
-        {list.slice(0, 4).map(a => {
-          const sprite = spriteFor(a, (acts[a.id] ?? []).slice(-1)[0], now)
-          return (
-            <Box key={`agent-${a.id}`} flexDirection="row" marginRight={4}>
-              {Svg ? (
-                <Svg source={SPRITES[sprite]![t % 2]!} alt={LABEL[sprite]!} width={36} height={30} />
-              ) : (
-                <Text>{ALT[sprite]} </Text>
-              )}
-              <Box flexDirection="column" marginLeft={1}>
-                <Button key={`open-${a.id}`} plain onPress={() => $.ui.open({ id: PANE, title: 'Agent Crew' })}>
-                  <Text bold color={colorOf(a.id)}>{clip(nm[a.id] ?? a.type, 18)}</Text>
-                </Button>
-                <Text dimColor>
-                  {LABEL[sprite]}
-                  {mods[a.id] ? ` · ${modelName(mods[a.id])}` : ''}
-                </Text>
-              </Box>
-            </Box>
-          )
-        })}
-        {list.length > 4 && <Text dimColor>+{list.length - 4}</Text>}
-        </Box>
-        <Box marginTop={1}>{cacheLine(Box, Text, Svg, cs, now, ttl, false)}</Box>
+        <Box marginTop={1}>{cacheLine(ui, s.cs, now, s.ttl)}</Box>
       </Box>
     )
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Text, Button, Svg } = $.ui.resolve(e) as any
-    const list = await read($, agents)
-    const acts = await read($, activity)
-    const t = await read($, frame)
-    const lk = await read($, links)
-    const iss = await read($, issues)
-    const tok = await read($, tokens)
-    const active = await read($, flow)
-    const cs = await read($, cache)
-    const ttl = await read($, cacheTtl)
-    const mods = await read($, models)
-    const nm = await read($, names)
-    const boss = await read($, main)
-    await read($, tick)
+    const ui = $.ui.resolve(e) as any
+    const { Box, Text, Button } = ui
+    const draw = drawings(ui)
     const now = await $.clock.now()
+    const { list, acts, t, lk, iss, tok, active, cs, ttl, mods, nm, boss, ranRetro } = await snapshot($, now)
     const running = list.filter(isLive)
     const done = list.filter(a => !isLive(a)).slice(-3)
-    const ranRetro = await read($, retroRan)
+    const sum = totalOf(tok)
 
-    const issueLine = (n: number) => {
-      const i = iss[String(n)]
-      const st = i?.state ? ({ OPEN: 'offen', CLOSED: 'geschlossen' } as Record<string, string>)[i.state.toUpperCase()] ?? i.state.toLowerCase() : ''
-      return `#${n} ${i?.title ? clip(i.title, 60) : '…'}${st ? ` · ${st}` : ''}`
+    const issueLine = (n: number) => `#${n} ${iss[String(n)]?.title || '…'}`
+
+    // One agent: critter on the left, then name and badge, status, task, and its share of the tokens.
+    type Card = {
+      id: string; source: string; name: string; tag?: string; badge: string; status: string
+      task: string; hue: Hue; pulse?: number
     }
-
-    const card = (a: CrewAgent) => {
-      const color = colorOf(a.id)
-      const live = isLive(a)
-      const last = (acts[a.id] ?? []).slice(-1)[0]
-      const mine = lk[a.id] ?? []
-      const cur = mine.slice(-1)[0]
-      const sprite = spriteFor(a, last, now)
-      const meta = [
-        a.type,
-        mods[a.id] ? modelName(mods[a.id]) : '',
-        LABEL[sprite]!,
-        sec((a.endedAt ?? now) - a.startedAt),
-        `${kTok(tok[a.id] ?? 0)} Tokens`,
-      ].filter(Boolean)
-      return (
-        <Box
-          key={`card-${a.id}`}
-          flexDirection="row"
-          alignItems="center"
-          borderStyle="round"
-          borderColor={live ? color : 'gray'}
-          paddingX={2}
-          paddingY={1}
-          marginTop={1}
-        >
-          <Box marginRight={3}>
-            {Svg ? (
-              <Svg source={SPRITES[sprite]![t % 2]!} alt={LABEL[sprite]!} width={72} height={60} />
-            ) : (
-              <Text>{ALT[sprite]}</Text>
-            )}
+    const cardOf = (c: Card) => (
+      <Box
+        key={`card-${c.id}`}
+        flexDirection="row"
+        alignItems="center"
+        borderStyle="round"
+        borderColor={c.hue.fg}
+        backgroundColor={c.hue.tint}
+        paddingX={1}
+      >
+        <Box marginRight={2}>{draw.sprite(`sprite-${c.id}`, c.source, c.status, c.hue.tint)}</Box>
+        <Box flexDirection="column" flexGrow={1} flexShrink={1}>
+          <Box flexDirection="row" justifyContent="space-between">
+            <Box flexDirection="row">
+              <Text bold color={INK}>{c.name}</Text>
+              {c.tag && <Box marginLeft={2}><Text color={c.hue.fg}>{c.tag}</Text></Box>}
+            </Box>
+            <Text color={c.hue.fg}>{c.badge}</Text>
           </Box>
-          <Box flexDirection="column" flexShrink={1}>
-            <Text bold color={live ? color : undefined} dimColor={!live}>
-              {nm[a.id] ?? a.type}
-            </Text>
-            <Text dimColor>{meta.join('  ·  ')}</Text>
-            {a.description ? <Text dimColor={!live}>{clip(a.description, 80)}</Text> : null}
-            {cur !== undefined && (
-              <Text color={live ? color : undefined} dimColor={!live}>
-                🎫 {issueLine(cur)}
-              </Text>
-            )}
-            {mine.slice(0, -1).map(n => (
-              <Text dimColor>   auch: {issueLine(n)}</Text>
-            ))}
+          <Text color={c.hue.fg}>{clip(c.status, CARD_TEXT)}</Text>
+          {c.task ? <Text color={SOFT}>{clip(c.task, CARD_TEXT)}</Text> : null}
+          <Box flexDirection="row" alignItems="center">
+            {draw.bar(shareOf(tok[c.id], sum), c.hue, c.pulse)}
+            <Text bold color={c.hue.fg}>{` ${kTok(tok[c.id] ?? 0).padStart(5)}`}</Text>
           </Box>
         </Box>
-      )
+      </Box>
+    )
+
+    const card = (a: CrewAgent) => {
+      const sprite = spriteFor(a, (acts[a.id] ?? []).slice(-1)[0], now)
+      const cur = (lk[a.id] ?? []).slice(-1)[0]
+      return cardOf({
+        id: a.id,
+        source: SPRITES[sprite]![t % 2]!,
+        name: nm[a.id] ?? a.type,
+        badge: `● ${sec(now - a.startedAt)}`,
+        status: [LABEL[sprite], modelName(mods[a.id])].filter(Boolean).join(' · '),
+        task: cur !== undefined ? issueLine(cur) : a.description,
+        hue: hueOf(a.id, nm),
+        pulse: t,
+      })
     }
 
-    // The main agent's own card: the crowned critter, its model, state, tokens and turns, and its ticket.
+    // The main agent's own card: the crowned critter, its state and turns, and its ticket.
     const mainCard = () => {
       const sprite = spriteFor(mainAgent(boss, now), (acts[MAIN] ?? []).slice(-1)[0], now)
-      const mine = lk[MAIN] ?? []
-      const cur = mine.slice(-1)[0]
-      const since = boss.turns === 0 && !boss.busy ? '' : boss.busy ? `arbeitet seit ${ago(now - boss.since)}` : `fertig vor ${ago(now - boss.since)}`
-      const meta = [
-        mods[MAIN] ? modelName(mods[MAIN]) : '',
-        LABEL[sprite]!,
-        since,
-        tok[MAIN] ? `${kTok(tok[MAIN]!)} Tokens` : '',
-        boss.turns > 0 ? `${boss.turns} ${boss.turns === 1 ? 'Turn' : 'Turns'}` : '',
-      ].filter(Boolean)
+      const cur = (lk[MAIN] ?? []).slice(-1)[0]
+      const since = boss.turns === 0 && !boss.busy ? '' : boss.busy ? ago(now - boss.since) : `vor ${ago(now - boss.since)}`
+      return cardOf({
+        id: MAIN,
+        source: BOSS[sprite]![t % 2]!,
+        name: 'Claude',
+        tag: 'Hauptagent',
+        badge: boss.busy ? 'arbeitet' : 'bereit',
+        status: [
+          LABEL[sprite],
+          modelName(mods[MAIN]),
+          since,
+          boss.turns > 0 ? `${boss.turns} ${boss.turns === 1 ? 'Turn' : 'Turns'}` : '',
+        ].filter(Boolean).join(' · '),
+        task: cur !== undefined ? issueLine(cur) : '',
+        hue: GOLD,
+        pulse: boss.busy ? t : undefined,
+      })
+    }
+
+    // Finished agents give up their card for a single line.
+    const doneRow = (a: CrewAgent) => {
+      const failed = a.status === 'failed' || a.status === 'killed'
       return (
-        <Box
-          key="card-main"
-          flexDirection="row"
-          alignItems="center"
-          borderStyle="round"
-          borderColor={boss.busy ? MAIN_COLOR : 'gray'}
-          paddingX={2}
-          paddingY={1}
-        >
-          <Box marginRight={3}>
-            {Svg ? (
-              <Svg source={BOSS[sprite]![t % 2]!} alt={`Hauptagent ${LABEL[sprite]!}`} width={72} height={60} />
-            ) : (
-              <Text>👑{ALT[sprite]}</Text>
-            )}
-          </Box>
-          <Box flexDirection="column" flexShrink={1}>
-            <Text bold color={MAIN_COLOR}>Claude</Text>
-            <Text dimColor>{meta.join('  ·  ')}</Text>
-            {cur !== undefined && <Text color={boss.busy ? MAIN_COLOR : undefined}>🎫 {issueLine(cur)}</Text>}
-          </Box>
+        <Box key={`done-${a.id}`} flexDirection="row" paddingLeft={2}>
+          <Text color={failed ? RED.fg : HUES[1]!.fg}>{failed ? '✗ ' : '✓ '}</Text>
+          <Text color={SOFT}>
+            {`${nm[a.id] ?? a.type} · ${sec((a.endedAt ?? now) - a.startedAt)} · ${kTok(tok[a.id] ?? 0)}`}
+          </Text>
         </Box>
       )
     }
@@ -797,128 +725,86 @@ export const register: Register = on => {
       ...list.filter(a => (lk[a.id] ?? []).includes(n) && isLive(a)),
     ]
 
-    // A section: a clear heading with a short summary to its right, then its content.
-    const section = (key: string, title: string, meta: string, body: any, first = false) => (
-      <Box key={`sec-${key}`} flexDirection="column" marginTop={first ? 0 : 2}>
-        <Box flexDirection="row" alignItems="center" marginBottom={1}>
-          <Text bold color="cyan">▍</Text>
-          <Box marginLeft={1}>
-            <Text bold>{title}</Text>
-          </Box>
-          {meta ? (
-            <Box marginLeft={3}>
-              <Text dimColor>{meta}</Text>
-            </Box>
-          ) : null}
+    // A section: a heading with a short summary to its right, then its content.
+    const section = (key: string, title: string, meta: string, body: any) => (
+      <Box key={`sec-${key}`} flexDirection="column" marginBottom={1}>
+        <Box flexDirection="row" alignItems="center">
+          <Text bold color={HUES[4]!.fg}>▍</Text>
+          <Text bold color={INK}>{title}</Text>
+          {meta ? <Box marginLeft={3}><Text color={SOFT}>{meta}</Text></Box> : null}
         </Box>
         {body}
       </Box>
     )
-    // The same rounded frame the agent cards use, for the other blocks.
-    const panel = (key: string, children: any, color?: string) => (
-      <Box
-        key={`panel-${key}`}
-        flexDirection="column"
-        borderStyle="round"
-        borderColor={color ?? 'gray'}
-        paddingX={2}
-        paddingY={1}
-      >
-        {children}
-      </Box>
-    )
 
     const STATE: Record<string, { label: string; color: string }> = {
-      OPEN: { label: '● offen', color: 'green' },
-      CLOSED: { label: '● geschlossen', color: 'magenta' },
+      OPEN: { label: '● offen', color: HUES[1]!.fg },
+      CLOSED: { label: '● geschlossen', color: HUES[5]!.fg },
     }
-    const issueCard = (n: number) => {
+    const issueRow = (n: number) => {
       const i = iss[String(n)]
       const w = workersOf(n)
-      const accent = w.length > 0 ? colorOf(w[0]!.id) : undefined
       const st = STATE[(i?.state ?? '').toUpperCase()]
       return (
-        <Box
-          key={`issue-${n}`}
-          flexDirection="column"
-          borderStyle="round"
-          borderColor={accent ?? 'gray'}
-          paddingX={2}
-          paddingY={1}
-          marginTop={1}
-        >
-          <Box flexDirection="row">
-            <Text bold color={accent} dimColor={!accent}>#{n}</Text>
-            {st && (
-              <Box marginLeft={3}>
-                <Text color={st.color}>{st.label}</Text>
-              </Box>
-            )}
-          </Box>
-          <Text dimColor={!accent}>{i?.title ? clip(i.title, 90) : 'Titel wird geladen …'}</Text>
-          {w.length > 0 ? (
-            <Box flexDirection="row" flexWrap="wrap">
-              <Text dimColor>in Arbeit bei </Text>
-              {w.map((a, k) => (
-                <Text bold color={colorOf(a.id)}>
-                  {k > 0 ? `, ${nm[a.id] ?? a.type}` : nm[a.id] ?? a.type}
-                </Text>
-              ))}
-            </Box>
-          ) : (
-            <Text dimColor>gerade niemand dran</Text>
-          )}
+        <Box key={`issue-${n}`} flexDirection="row" flexWrap="wrap" columnGap={2}>
+          <Text bold color={w.length > 0 ? hueOf(w[0]!.id, nm).fg : SOFT}>#{n}</Text>
+          {st && <Text color={st.color}>{st.label}</Text>}
+          <Text color={i?.title ? INK : SOFT}>{i?.title ? clip(i.title, 60) : 'Titel wird geladen …'}</Text>
+          {w.map(a => (
+            <Text key={`worker-${n}-${a.id}`} bold color={hueOf(a.id, nm).fg}>
+              {a.id === MAIN ? 'Claude' : nm[a.id] ?? a.type}
+            </Text>
+          ))}
         </Box>
       )
     }
 
+    // Round gauges from what the session measures: warm time left, hit rate, the crew's token share.
+    const c = cacheNow(cs, now, ttl)
+    const crewTokens = sum - (tok[MAIN] ?? 0)
+    const gauge = (key: string, label: string, pct: number | null, hue: Hue, note: string) => (
+      <Box key={`gauge-${key}`} flexDirection="column" alignItems="center" marginRight={3} width={14}>
+        {draw.ring(`ring-${key}`, pct, hue, pct === null ? '–' : `${pct}%`)}
+        <Text bold color={hue.fg}>{label}</Text>
+        <Text color={SOFT}>{note}</Text>
+      </Box>
+    )
+
     const flowMeta = active >= STEPS.length ? 'alles erledigt' : `Schritt ${active + 1} von ${STEPS.length}`
-    const crewMeta = [`${running.length} aktiv`, done.length > 0 ? `${done.length} fertig` : ''].filter(Boolean).join(' · ')
+    const crewMeta = [`${running.length} aktiv`, done.length > 0 ? `${done.length} fertig` : '', 'Balken: Token-Anteil'].filter(Boolean).join(' · ')
     const busyIssues = issueNumbers.filter(n => workersOf(n).length > 0).length
 
     return (
-      <Box flexDirection="column" paddingX={1} paddingY={1}>
+      <Box flexDirection="column" paddingX={1}>
         {section(
           'flow',
           'Ablauf',
           flowMeta,
-          panel(
-            'flow',
-            <Box flexDirection="column">
-              {stepper($, Box, Text, Button, Svg, active, t % 2, ranRetro)}
-              <Box marginTop={1}>
-                <Button
-                  key="reset"
-                  plain
-                  dimColor
-                  onPress={async () => {
-                    await update($, flow, () => 0)
-                    await $.store.set('flow', 0)
-                    await update($, retroRan, () => false)
-                  }}
-                >
-                  ↺ zurücksetzen
-                </Button>
-              </Box>
-            </Box>,
-          ),
-          true,
+          <Box flexDirection="column">
+            {stepper($, Box, Text, Button, active, t % 2, ranRetro)}
+            <Button
+              key="reset"
+              plain
+              dimColor
+              onPress={async () => {
+                await update($, flow, () => 0)
+                await $.store.set('flow', 0)
+                await update($, retroRan, () => false)
+              }}
+            >
+              ↺ zurücksetzen
+            </Button>
+          </Box>,
         )}
-        {section('cache', 'Session-Cache', '', panel('cache', cacheLine(Box, Text, Svg, cs, now, ttl, true)))}
-        {section('main', 'Hauptagent', boss.busy ? 'arbeitet' : 'bereit', mainCard())}
         {section(
           'crew',
           'Agenten',
           crewMeta,
           <Box flexDirection="column">
-            {list.length === 0 && panel('empty', <Text dimColor>Keine Sub-Agents. Es ist ruhig im Bau …</Text>)}
+            {mainCard()}
             {running.map(card)}
-            {done.length > 0 && (
-              <Box marginTop={1}>
-                <Text dimColor>Zuletzt fertig</Text>
-              </Box>
-            )}
-            {done.map(card)}
+            {list.length === 0 && <Text color={SOFT}>Keine Sub-Agents. Es ist ruhig im Bau …</Text>}
+            {done.map(doneRow)}
           </Box>,
         )}
         {issueNumbers.length > 0 &&
@@ -926,8 +812,19 @@ export const register: Register = on => {
             'issues',
             'Issues',
             `${issueNumbers.length} verknüpft${busyIssues > 0 ? ` · ${busyIssues} in Arbeit` : ''}`,
-            <Box flexDirection="column">{issueNumbers.map(issueCard)}</Box>,
+            <Box flexDirection="column">{issueNumbers.map(issueRow)}</Box>,
           )}
+        <Box flexDirection="row" flexWrap="wrap" justifyContent="center">
+          {gauge(
+            'warm',
+            'Cache warm',
+            c ? c.remaining : null,
+            c ? c.hue : MUTED,
+            !c ? 'keine Daten' : c.left > 0 ? `bis ${clockTime(c.expiresAt)}` : `kalt seit ${ago(-c.left)}`,
+          )}
+          {gauge('hit', 'Treffer', c ? c.hit : null, c ? HUES[1]! : MUTED, c ? `Session ${pctOf(cs)}%` : 'keine Daten')}
+          {gauge('crew', 'Crew', sum > 0 ? Math.round((crewTokens / sum) * 100) : null, sum > 0 ? HUES[2]! : MUTED, `${kTok(sum)} Tokens`)}
+        </Box>
       </Box>
     )
   })
