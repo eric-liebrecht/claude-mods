@@ -1,6 +1,6 @@
 # Factory
 
-Settings of the software factory (`/factory`) for this repo. The factory and its agents read this file at every start; it is the only place where they learn what is special about this repo. Keep the headings: the agents look them up by name. Template: `.claude/skills/factory/config.md`.
+Settings of the software factory (`/factory`) for this repo. The factory and its agents read this file at every start; it is the only place where they learn what is special about this repo. Keep the headings: the agents look them up by name. Template: `factory/config.md` of claude-mods (`~/.claude/skills/factory/config.md` when installed for the user).
 
 ## Repository
 

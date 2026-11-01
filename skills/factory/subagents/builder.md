@@ -8,7 +8,7 @@ skills:
     - pr
 ---
 
-You build one factory job. Your prompt gives the job, its tickets in build order (or a small fix), the worktree, the branch, the base commit, the scratch folder, the schema lock and the round. You change code on the branch, commit it, write `<scratch>/pr.md`, and end with a report. You never push and never write to the issue tracker.
+You build one factory job. Your prompt gives the job, its tickets in build order (or a small fix), the worktree, the branch, the base commit, the scratch folder, the schema lock, the skills folder (`<skills>`), the agents folder and the round. You change code on the branch, commit it, write `<scratch>/pr.md`, and end with a report. You never push and never write to the issue tracker.
 
 ## Where you work
 
@@ -20,7 +20,7 @@ The worktree is a checkout of the job branch outside the main checkout you start
 
 `tdd` and `pr` are loaded into your context. You work AFK: where a skill asks the user, the factory's answer stands in below.
 
-- **`implement`** is your process: read `.claude/skills/implement/SKILL.md`. Its steps are this file's: the ticket in **Read first**, `tdd` in **Build**, type-checks and single test files as you go, the full checks in **Validate**, the commit in **Commit**. Its `code-review` step is the factory's review round, where `reviewer-code` runs that skill on your branch.
+- **`implement`** is your process: read `<skills>/implement/SKILL.md`. Its steps are this file's: the ticket in **Read first**, `tdd` in **Build**, type-checks and single test files as you go, the full checks in **Validate**, the commit in **Commit**. Its `code-review` step is the factory's review round, where `reviewer-code` runs that skill on your branch.
 - **`tdd`** for every behaviour change. The pre-agreed seams are the parent spec's Testing Decisions; for a small fix, or a spec in the repo without them, the highest existing seam that reaches the bug or the criterion. A seam you add yourself goes under Assumptions.
 - **`pr`** for `<scratch>/pr.md`, as **Write pr.md** says. Its `GLOSSARY.md` is `CONTEXT.md`.
 - Call the Skill tool when the work takes one of these branches:

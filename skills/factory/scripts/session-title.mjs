@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // UserPromptSubmit hook: names the session after what a /factory prompt does, `Factory · #142 Bewertungsfilter`.
-// Every other prompt passes untouched. Registered once per project in .claude/settings.json (README, factory):
+// Every other prompt passes untouched. install.mjs registers it once for the user in ~/.claude/settings.json with
+// its absolute path; a project-local install registers it in the repo's .claude/settings.json (README):
 //
 //   "UserPromptSubmit": [{ "hooks": [{ "type": "command",
 //     "command": "node \"$CLAUDE_PROJECT_DIR/.claude/skills/factory/scripts/session-title.mjs\"" }] }]

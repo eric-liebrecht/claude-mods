@@ -9,7 +9,7 @@ You orchestrate jobs: a released ticket (`ready-for-agent`), or a **bundle** of 
 
 **GitHub is the only state.** The issue says what to build, its label `factory-in-progress` says that the factory has taken it on, from the claim until **/factory close**, its assignee says who built it, the PR is the result. The label is what lets several sessions run the factory on one repo in parallel, each in its own worktrees, on one machine or several: every session skips a ticket that carries it, already in the search. Everything else is throwaway: the job's worktree and its scratch folder exist while this session runs the job and are removed at the end, so nothing of a job lands in the repo or outlives the session.
 
-**`docs/agents/factory.md` is the repo's part.** It names the integration branch, the setup, the checks, the schema commands, the docs rule, the standards, the danger list and the security points of this repo, and, when specs are files in the repo, their commands (`## Specs`). Read it before anything else; you and every agent follow it where this file says "the config". Missing: stop with `⛔ docs/agents/factory.md fehlt` and `Du musst: Vorlage .claude/skills/factory/config.md nach docs/agents/factory.md kopieren und ausfüllen`.
+**`docs/agents/factory.md` is the repo's part.** It names the integration branch, the setup, the checks, the schema commands, the docs rule, the standards, the danger list and the security points of this repo, and, when specs are files in the repo, their commands (`## Specs`). Read it before anything else; you and every agent follow it where this file says "the config". Missing: stop with `⛔ docs/agents/factory.md fehlt` and `Du musst: Vorlage <skills>/factory/config.md nach docs/agents/factory.md kopieren und ausfüllen` (`<skills>` as in **Names**, written out).
 
 **Every message to the user follows [Output](#output)**, from the first line to the last, also when the user asks for the status.
 
@@ -45,7 +45,7 @@ Die Factory mergt nie und schließt Tickets nur mit /factory close.
 
 The session carries the name of what the factory does, so the user finds it among their sessions: `Factory · #142 Bewertungsfilter` (job label and the issue title cut to three words, as in **Start**), `Factory · #142, #150` for several jobs, `Factory · #143+#147 Review-Filter` for a bundle, `Factory · fix <slug>`, `Factory · rework #<pr>`, `Factory · close`. `/factory help` keeps the name it has.
 
-- In a local session the hook `scripts/session-title.mjs` sets it from the `/factory` prompt before you start (`UserPromptSubmit`, `sessionTitle`); the repo registers it once in `.claude/settings.json` (README of claude-mods).
+- In a local session the hook `scripts/session-title.mjs` sets it from the `/factory` prompt before you start (`UserPromptSubmit`, `sessionTitle`); `install.mjs` of claude-mods registers it once in the user's `~/.claude/settings.json`, a project-local install in the repo's `.claude/settings.json` (README of claude-mods).
 - When a tool that sets the session title is available, call it right after **Start** with the title of the jobs that started, also for `/factory next`, whose tickets the hook cannot know. In a cloud session that is `set_session_title` of the `claude-code-remote` server (load it with ToolSearch when it is deferred), with the id `get_session` without arguments returns.
 - Neither available: go on without it. The title never appears in a message to the user.
 
@@ -75,10 +75,12 @@ ticket → ready check ─ fails ───────────────�
 | `spec-writer`           | `<scratch>/spec.md` (and `criteria.md`), its final report  | `to-spec`, `codebase-design`                                                                                      |
 | `retro`                 | `<scratch>/retro.md`, its final report                     | `retro`, `writing-for-agents`; reads the job's transcripts through `scripts/transcript.mjs`                       |
 
-The agents live in `.claude/agents/`; their source is `.claude/skills/factory/subagents/`. When `.claude/agents/builder.md` or `.claude/agents/retro.md` is missing, stop with `⛔ Factory-Agenten fehlen` and `Du musst: .claude/skills/factory/subagents/*.md nach .claude/agents/ kopieren, Session neu starten`. What is special about this repo goes into `docs/agents/factory.md`, not into this file or the agents; rules for code live in `AGENTS.md`, which every agent reads.
+The agents live in `<agents>` (**Names**); their source is `<skills>/factory/subagents/`. When neither `<main>/.claude/agents/` nor `~/.claude/agents/` holds `builder.md` and `retro.md`, stop with `⛔ Factory-Agenten fehlen` and `Du musst: node install.mjs in claude-mods ausführen (oder <skills>/factory/subagents/*.md nach .claude/agents/ kopieren), Session neu starten`. What is special about this repo goes into `docs/agents/factory.md`, not into this file or the agents; rules for code live in `AGENTS.md`, which every agent reads.
 
 ## Names
 
+- **Skills** (`<skills>`): the folder that holds this skill and the skills it calls, absolute. It is the parent of `${CLAUDE_SKILL_DIR}`. When that is not filled in: `<main>/.claude/skills` if it holds `factory/SKILL.md` (a project-local install), otherwise `~/.claude/skills` (or `$CLAUDE_CONFIG_DIR/skills`), with `~` expanded. Installed for the user by `install.mjs` of claude-mods, the factory serves every repo from there; only `docs/agents/factory.md` belongs to the repo.
+- **Agents** (`<agents>`): `<main>/.claude/agents` when it holds `builder.md`, otherwise `~/.claude/agents` (or `$CLAUDE_CONFIG_DIR/agents`), absolute. Claude Code prefers the project's copy of an agent over the user's, the same order.
 - **Repo**: `<owner>/<name>`, from `gh repo view --json nameWithOwner --jq .nameWithOwner` in the main checkout. Every `gh api repos/<repo>/…` below uses it.
 - **Integration branch** (`<integration>`): the config's `Integration branch`. **Protected branches**: the config's list, plus the integration branch and the default branch.
 - **Spec job**: `spec-<n>[-<m> …]`, the numbers of the tickets without a spec, ascending (`spec-142-143`). It drafts a spec and builds nothing: no branch, a detached worktree, the scratch folder. With **Specs in the repo**, **Publish** puts the spec on the branch `spec/<spec>`, `<spec>` being the spec's folder name.
@@ -98,7 +100,7 @@ The retro sees what the job's agents did through two things you keep in the scra
 - `<scratch>/history/`: when a builder finishes, its final report as `builder-<N>.md` (`builder-<N>-rebase.md` for a rebase); when a review round is done, `cp` of both review files to `review-security-<N>.md` and `review-code-<N>.md`, before the next round overwrites them.
 
 Every agent prompt starts with
-`Job: <job>. Tickets: #<n>[, #<m> …] in build order (or: Small fix: <description, verbatim>). Worktree: <worktree>. Branch: <branch>. Base: <base>. Scratch: <scratch>. Schema lock: <schema lock>.`
+`Job: <job>. Tickets: #<n>[, #<m> …] in build order (or: Small fix: <description, verbatim>). Worktree: <worktree>. Branch: <branch>. Base: <base>. Scratch: <scratch>. Schema lock: <schema lock>. Skills: <skills>. Agents: <agents>.`
 Below, `<head>` stands for that sentence.
 
 ## Freigabe
@@ -134,7 +136,7 @@ Every job branch is a straight line of commits on top of its base, and stays one
 
 ## /factory #<issue>
 
-1. **Ready check.** In the main checkout read `docs/agents/factory.md`, check that `.claude/agents/builder.md` and `.claude/agents/retro.md` exist, run `gh auth status`, `git fetch origin <integration>` and `gh issue view <n> --json number,title,body,labels,assignees,state`. The ticket is ready when all hold:
+1. **Ready check.** In the main checkout read `docs/agents/factory.md`, resolve `<skills>` and `<agents>` (**Names**) and check that `<agents>/builder.md` and `<agents>/retro.md` exist, run `gh auth status`, `git fetch origin <integration>` and `gh issue view <n> --json number,title,body,labels,assignees,state`. The ticket is ready when all hold:
     - it is open, carries `ready-for-agent`, has acceptance criteria and is unassigned or assigned to you;
     - it does not carry `factory-in-progress` (the factory has taken it on; `⛔ läuft bereits (Label)`, with `Du musst: #<n>: Label factory-in-progress entfernen, falls kein Job und kein PR mehr läuft`);
     - it is a ticket, not a spec (**Freigabe** says how to tell);
@@ -161,7 +163,7 @@ Every job branch is a straight line of commits on top of its base, and stays one
 A ticket without a parent spec gets one drafted and published as a draft. Nothing is built from it until the human has released it, so the job ends with the spec.
 
 1. **Claim.** `git worktree add --detach <worktree> origin/<integration>` is the claim: it fails when the path exists, because another session drafts this spec. Then stop with `⛔ läuft bereits (Worktree existiert)`. Otherwise `mkdir -p <scratch>`. No **Setup**: the spec writer only reads. The ticket gets neither the in-progress label nor an assignee: nothing is built from it yet, and the human starts it with `/factory #<n>` once the spec is released.
-2. **Draft.** Spawn `spec-writer` **with the name `spec-writer-<job>`** and the prompt `Job: <job>. Tickets: #<n>[, #<m> …]. Worktree: <worktree>. Scratch: <scratch>.` On `STATUS: BLOCKED`, go to step 5 with the blocker as `⛔ <reason>`.
+2. **Draft.** Spawn `spec-writer` **with the name `spec-writer-<job>`** and the prompt `Job: <job>. Tickets: #<n>[, #<m> …]. Worktree: <worktree>. Scratch: <scratch>. Skills: <skills>.` On `STATUS: BLOCKED`, go to step 5 with the blocker as `⛔ <reason>`.
 3. **Check.** Line 1 of `<scratch>/spec.md` starts with `TITLE: `, line 3 is `## Freigabe`, and its `Freigegeben von:` line is still `- Freigegeben von: Name [JJJJ-MM-TT]`. Otherwise go to step 5 with `⛔ Spec-Entwurf fehlerhaft`.
 4. **Publish.** Check every ticket once more for a parent (`…/issues/<n>/parent`); one that has got one in the meantime is left out, and when none is left, go to step 5. Then:
     - `tail -n +3 <scratch>/spec.md | gh issue create --title "<title>" --body-file -`, without a label: the spec isn't built itself, and a label on a spec is no Freigabe.
