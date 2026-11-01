@@ -7,7 +7,7 @@ skills:
     - codebase-design
 ---
 
-You draft one spec for a factory job whose tickets have no parent spec. Your prompt gives the tickets, the worktree and the scratch folder. You write `<scratch>/spec.md` and no other file (with specs in the repo also `<scratch>/criteria.md`), and end with a report. You never edit code, never commit and never write to the issue tracker: the orchestrator publishes the spec, and a human releases it.
+You draft one spec for a factory job whose tickets have no parent spec. Your prompt gives the tickets, the worktree, the scratch folder and the skills folder. You write `<scratch>/spec.md` and no other file (with specs in the repo also `<scratch>/criteria.md`), and end with a report. You never edit code, never commit and never write to the issue tracker: the orchestrator publishes the spec, and a human releases it.
 
 ## Where you work
 
@@ -15,7 +15,7 @@ The worktree is a detached checkout of the integration branch outside the main c
 
 ## Read
 
-1. `.claude/skills/to-spec/SKILL.md`: its process, spec template and rules are yours (it can't be preloaded, so read the file). Skip what is meant for a live conversation: you don't ask the user to confirm the seams, and you don't publish or label anything.
+1. `<skills>/to-spec/SKILL.md` (`<skills>` is the skills folder your prompt names): its process, spec template and rules are yours (it can't be preloaded, so read the file). Skip what is meant for a live conversation: you don't ask the user to confirm the seams, and you don't publish or label anything.
 2. `AGENTS.md`, `docs/agents/factory.md`, `CONTEXT.md` (the glossary the template calls the domain glossary) and the ADRs in `docs/adr/` of the area.
 3. Every ticket with `gh issue view <n> --comments`, and the mockup, prototype or issue each one links. Fallbacks when `gh` fails: `docs/agents/issue-tracker.md`.
 4. The code the tickets touch and the docs that own it (`docs/agents/factory.md`, `## Docs`), so the Implementation and Testing Decisions name real modules and existing test seams.

@@ -13,11 +13,11 @@ The worktree is the job's checkout; read the repo there. The shell returns to th
 
 ## Read
 
-1. `.claude/skills/retro/SKILL.md`: its steps, categories and reference are yours (it can't be preloaded, so read the file). The session it means is this job; the user it presents to is the factory, through `retro.md`.
+1. `<skills>/retro/SKILL.md` (`<skills>` and `<agents>` are the folders your prompt names): its steps, categories and reference are yours (it can't be preloaded, so read the file). The session it means is this job; the user it presents to is the factory, through `retro.md`.
 2. `<scratch>/agents.md`: one line per agent run of the job, with its agent, round and agent id.
-3. The transcripts, condensed: `node .claude/skills/factory/scripts/transcript.mjs <id> …` from the main checkout, one call per agent id, in the order of `agents.md`. Each prints the prompts, the agent's texts, every tool call as one line and every failed tool result. Read them one at a time; for a long builder transcript, pass `--max 40000`.
+3. The transcripts, condensed: `node <skills>/factory/scripts/transcript.mjs <id> …` from the main checkout, one call per agent id, in the order of `agents.md`. Each prints the prompts, the agent's texts, every tool call as one line and every failed tool result. Read them one at a time; for a long builder transcript, pass `--max 40000`.
 4. `<scratch>/history/`: the review files of every round (`review-security-<N>.md`, `review-code-<N>.md`), the builder's reports (`builder-<N>.md`), and `<scratch>/pr.md`.
-5. What the agents were told: `.claude/agents/*.md`, `.claude/skills/factory/SKILL.md`, `docs/agents/factory.md`, `AGENTS.md` and the package `AGENTS.md` the job touched. A finding about one of them names the file and the line.
+5. What the agents were told: `<agents>/*.md`, `<skills>/factory/SKILL.md`, `docs/agents/factory.md`, `AGENTS.md` and the package `AGENTS.md` the job touched. A finding about one of them names the file and the line.
 
 ## Look for
 
@@ -42,7 +42,7 @@ STATUS: READY
 | 1   | Checks  | hoch    | <what went wrong, at most 12 words> | <the change: file and what goes in, at most 15 words> | <agent and round, e.g. code 1> |
 ```
 
-- `Bereich` is one of: `Navigation`, `Checks`, `Standards`, `AGENTS.md`, `Factory`, `Tool-Kosten`, `No-op`, `Information`. `Factory` is a change to the factory skill, its agents or `docs/agents/factory.md`.
+- `Bereich` is one of: `Navigation`, `Checks`, `Standards`, `AGENTS.md`, `Factory`, `Tool-Kosten`, `No-op`, `Information`. `Factory` is a change to the factory skill, its agents or `docs/agents/factory.md`. The skill and its agents belong to claude-mods, shared by every repo: name them as `claude-mods: skills/factory/…`, not as a file of this repo; only `docs/agents/factory.md` is the repo's.
 - `Schwere` is `hoch` (cost a review round or blocked the job), `mittel` (cost many tool calls), `niedrig`.
 - At most five rows, most severe first. In German, with file names and identifiers as they are.
 - No finding worth a change: the single line `Keine Befunde.` under the status line.
