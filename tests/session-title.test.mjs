@@ -6,7 +6,7 @@ import { makeRepo, SCRIPTS } from "./helpers.mjs";
 
 const repo = makeRepo();
 repo.gh([
-	["^issue view 142 ", "Rating filter for the review list\n"],
+	["^issue view 142 ", "Search filter for the order list\n"],
 	["^issue view 143 ", "Review filters\n"],
 ]);
 
@@ -21,9 +21,9 @@ function title(prompt) {
 }
 
 test("names the session after the /factory command", () => {
-	assert.equal(title("/factory #142"), "Factory · #142 Rating filter for");
+	assert.equal(title("/factory #142"), "Factory · #142 Search filter for");
 	assert.equal(title("/factory #142 #150"), "Factory · #142, #150");
-	assert.equal(title("/factory #142 #143 --bundle"), "Factory · #142+#143 Rating filter for");
+	assert.equal(title("/factory #142 #143 --bundle"), "Factory · #142+#143 Search filter for");
 	assert.equal(title("/factory close"), "Factory · close");
 	assert.equal(title("/factory doctor --fix"), "Factory · doctor");
 	assert.equal(title("/factory next 2"), "Factory · next");

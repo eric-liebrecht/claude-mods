@@ -1,11 +1,12 @@
 # Factory
 
-Settings of the software factory (`/factory`) for this repo. The factory and its agents read this file at every start; it is the only place where they learn what is special about this repo. Keep the headings: the agents look them up by name. Template: `factory/config.md` of claude-mods (`~/.claude/skills/factory/config.md` when installed for the user).
+Settings of the software factory (`/factory`) for this repo. The factory and its agents read this file at every start; it is the only place where they learn what is special about this repo. Keep the headings: the agents look them up by name. Replace every `<…>` placeholder with this repo's value; `/factory doctor` reports the ones left. Template: `factory/config.md` of claude-mods (`~/.claude/skills/factory/config.md` when installed for the user).
 
 ## Repository
 
 - Integration branch: `main`
 - Protected branches: `main`
+- Language: `de` (`de` or `en`: the language of the factory's messages, the specs it drafts, its retro and what it writes to issues and PRs)
 
 PRs go into the integration branch. The factory never pushes to a protected branch and never merges.
 
@@ -14,25 +15,25 @@ PRs go into the integration branch. The factory never pushes to a protected bran
 The fresh-checkout setup the factory runs in every new worktree, one command per line (each runs in the worktree's root in a shell of its own, so a `cd` does not carry over; end a line with `\` to continue it):
 
 ```bash
-pnpm install --frozen-lockfile
+<command that installs the dependencies from the lockfile, e.g. npm ci>
 ```
 
 ## Validate
 
-The builder runs these in the worktree before it reports READY. `<files>` are the files the job changed, `<base>` is the job's base commit.
+The builder runs these in the worktree before it reports READY; they may fix files (a formatter in write mode). `<files>` are the files the job changed, `<base>` is the job's base commit.
 
 ```bash
-pnpm exec prettier --write <files>
-pnpm lint && pnpm check-types && pnpm test
+<formatter in write mode on <files>, e.g. npx prettier --write <files>>
+<lint, type check and tests, e.g. npm run lint && npm test>
 ```
 
 ## Check
 
-The code reviewer runs these; none of them may rewrite a file.
+The factory runs these before every review round (its gate); none of them may rewrite a file.
 
 ```bash
-pnpm exec prettier --check <files>
-pnpm lint && pnpm check-types && pnpm test
+<formatter in check mode on <files>, e.g. npx prettier --check <files>>
+<lint, type check and tests, e.g. npm run lint && npm test>
 ```
 
 ## Schema
@@ -53,7 +54,7 @@ How code and docs stay in sync, so that the builder updates the docs in the same
 Optional: leave this section out when specs are issues (the factory's `## Freigabe` block). With it, specs are files in this repo; the factory finds each line by the name before its colon.
 
 - Spec of a ticket: the file its `Spec:` line names (`docs/specs/<spec>/spec.md`), read from the integration branch. Its `Kriterien:` line lists the acceptance criteria (`AC-<n>`) the ticket delivers.
-- Released: the spec's `Status:` line reads `freigegeben (<date>, …)` or `umgesetzt (<date>, …)`.
+- Released: the spec's `Status:` line reads `freigegeben (<date>, …)` or `umgesetzt (<date>, …)` (in English `released` or `implemented`).
 - New: `<command>` writes `docs/specs/<spec>/spec.md` from `docs/specs/TEMPLATE.md`.
 - Check: `<command that checks every spec and fails on a finding>`
 - Release (only the human, or an agent on the human's explicit word): `<command that releases <spec>>`
@@ -64,9 +65,9 @@ Optional: leave this section out when specs are issues (the factory's `## Freiga
 
 Optional: leave this section out (or write `None.`) when the repo has no screens to look at. With it, the factory's UI reviewer starts the job's worktree and screenshots the screens a round changes. `<port>` is a free port the factory picks; it is also in `PORT`.
 
-- Start: `pnpm --filter web dev --port <port>`
+- Start: `<command that starts the dev server on <port>, e.g. npm run dev -- --port <port>>`
 - URL: `http://localhost:<port>/`
-- Paths: `apps/web/**`, `packages/ui/**` (a round whose changes touch none of them gets no UI review; without this line, every round does)
+- Paths: `<globs of the files that render screens, e.g. src/pages/**>` (a round whose changes touch none of them gets no UI review; without this line, every round does)
 - Timeout: 120 seconds until the URL answers
 - Login: how the reviewer gets past a login in the dev server (a seeded user, a dev bypass), or leave the line out
 
@@ -79,32 +80,41 @@ Optional: without this section the factory waits up to 20 minutes for the PR's c
 
 ## Standards
 
-Files the code reviewer reads for the Standards axis, besides `AGENTS.md` and the package `AGENTS.md` files:
+What every agent reads besides `AGENTS.md` and the `AGENTS.md` of each package or folder it touches. The named lines are looked up by name; a line left out means the file named here when the repo has it.
 
-- `CONTEXT.md` (domain terms; where a skill says `GLOSSARY.md`, use `CONTEXT.md`)
-- `docs/adr/`
+- Glossary: `CONTEXT.md` (the domain terms and their avoided synonyms; where a skill says `GLOSSARY.md`, this file)
+- Decisions: `docs/adr/` (the architecture decision records)
+- Issue tracker: `docs/agents/issue-tracker.md` (what to do when `gh` fails)
+- Further files the code reviewer reads for the Standards axis, one per line.
+
+## Product decisions
+
+What only a human decides in this repo. The spec writer leaves these open under its open questions, the builder never decides one (it reports BLOCKED, or lists a small one as an Assumption), and the reviewers put one they find under For the human, so the PR opens as a draft. Write `- None yet.` when there are none. For example:
+
+- `<prices and what a plan or tier includes>`
+- `<copy that speaks for the business to its users>`
+- `<what is sent to users or written to outside systems>`
 
 ## Danger list
 
 Paths and topics a human must look at before a PR is merged. A PR that touches one opens as a draft with the item under Needs human.
 
-- `.github/workflows/`, Dockerfiles, env variables, secrets
+- CI and deployment: `<.github/workflows/, Dockerfiles, infrastructure files>`
+- configuration: environment variables, secrets
 - `.claude/` settings, hooks, agents and skills
-- any `package.json` dependency
+- dependencies: `<the manifest files, e.g. package.json, pyproject.toml>`
 - database schema and migrations
-- auth, roles, guards
-- `docs/adr/`
+- authentication and permissions
+- the decision records (`Decisions` in `## Standards`)
 
 ## Security
 
-What the security reviewer checks in this repo, on top of its general list. Its general list knows no repo: name here who owns which data, how access is decided, which actions are dangerous and have exactly one entry, which external writes and messages need a confirmation, and where the shared input schemas and the URL check live. For example:
+What the security reviewer checks in this repo, on top of its general list. Its general list knows no repo: name here what applies, and leave out a line that doesn't. Write `- None yet.` when nothing does.
 
-- Owner of data: the organisation (`organizationId` from the session), never from the request body.
-- Access: the global session guard; open routes carry `@Public()` with a reason; roles via `@Roles()`.
-- Gates: subscription and onboarding; a new exception names its reason.
-- Dangerous actions and their one entry: deleting an organisation (`OrganizationService.delete`), publishing a reply (`ReplyPublisher`).
-- External writes and customer messages: only after the confirmation the spec names.
-- Input and URLs: shared zod schemas in `packages/contracts`; outgoing URLs through `assertPublicUrl`.
-- Variables that reach the browser: `NEXT_PUBLIC_*`, never a secret.
-
-Replace the examples with this repo's points, or write `- None yet.`
+- Owner of data: `<who owns which data (a user, an account, a tenant) and where the owner comes from: the session, never the request>`
+- Access: `<how an entry point (route, handler, command, job) is protected, and how one is opened deliberately>`
+- Gates: `<checks a user must pass besides access, and how an exception is justified>`
+- Dangerous actions and their one entry: `<action → the one function or service that does it>`
+- External writes and messages: `<which writes to outside systems and messages to users need a confirmation, and which>`
+- Input and URLs: `<where input is validated; how outgoing requests to user-supplied URLs are checked>`
+- Client configuration: `<which variables reach a client (browser, app) and must never hold a secret>`

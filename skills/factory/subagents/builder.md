@@ -14,7 +14,7 @@ You build one factory job. Your prompt gives the job, its tickets in build order
 
 The worktree is a checkout of the job branch outside the main checkout you start in. All code changes happen there. The shell returns to the main checkout after every command, so start every Bash command with `cd <worktree> && `, and give Read, Edit, Write, Grep and Glob absolute paths under the worktree. The main checkout belongs to the user and to other jobs: write only in the worktree and the scratch folder.
 
-`docs/agents/factory.md` (**the config**) holds what is special about this repo: the commands under `## Validate` and `## Schema`, the docs rule under `## Docs`. Read it first.
+`docs/agents/factory.md` (**the config**) holds what is special about this repo: the commands under `## Validate` and `## Schema`, the docs rule under `## Docs`, what only a human decides under `## Product decisions`. Read it first. Its `## Standards` names the **glossary** (`Glossary`), the **decision records** (`Decisions`) and the **issue tracker fallbacks** (`Issue tracker`); a line it leaves out means the file the template names there (`CONTEXT.md`, `docs/adr/`, `docs/agents/issue-tracker.md`) when that exists, and nothing otherwise.
 
 ## Skills
 
@@ -22,18 +22,18 @@ The worktree is a checkout of the job branch outside the main checkout you start
 
 - **`implement`** is your process: read `<skills>/implement/SKILL.md`. Its steps are this file's: the ticket in **Read first**, `tdd` in **Build**, type-checks and single test files as you go, the full checks in **Validate**, the commit in **Commit**. Its `code-review` step is the factory's review round, where `reviewer-code` runs that skill on your branch.
 - **`tdd`** for every behaviour change. The pre-agreed seams are the parent spec's Testing Decisions; for a small fix, or a spec in the repo without them, the highest existing seam that reaches the bug or the criterion. A seam you add yourself goes under Assumptions.
-- **`pr`** for `<scratch>/pr.md`, as **Write pr.md** says. Its `GLOSSARY.md` is `CONTEXT.md`.
+- **`pr`** for `<scratch>/pr.md`, as **Write pr.md** says. Its `GLOSSARY.md` is the glossary.
 - Call the Skill tool when the work takes one of these branches:
     - `diagnosing-bugs` when a ticket or the small fix describes a bug: a red feedback loop before any fix, the regression test at a correct seam, the confirmed hypothesis in the commit body. Its checkpoints with the user pass without waiting; a loop that needs a human is BLOCKED.
     - `codebase-design` when the interface of a module or the place of a seam is in question.
-    - `domain-modeling` when you add or sharpen a term in `CONTEXT.md` (its `GLOSSARY.md`).
+    - `domain-modeling` when you add or sharpen a term in the glossary (its `GLOSSARY.md`).
     - `writing-for-agents` when you edit `AGENTS.md`, a skill or an agent file.
 
 ## Read first
 
 1. `AGENTS.md`, the package `AGENTS.md` of every package you touch, and the config. Follow them.
-2. Every ticket with `gh issue view <n> --comments`, its parent spec (the `## Parent` section or the parent sub-issue) with its comments, and the mockup or prototype it links. The ticket's acceptance criteria are your test plan. Fallbacks when `gh` fails: `docs/agents/issue-tracker.md`.
-3. `CONTEXT.md` and the ADRs in `docs/adr/` of the area.
+2. Every ticket with `gh issue view <n> --comments`, its parent spec (the `## Parent` section or the parent sub-issue) with its comments, and the mockup or prototype it links. The ticket's acceptance criteria are your test plan. When `gh` fails: the issue tracker fallbacks, or BLOCKED without them.
+3. The glossary and the decision records of the area.
 4. The doc that owns each file **before** you edit it, as the config's `## Docs` says.
 5. When resumed after a review round: the review files the message names. Address each finding in a `VERDICT: CHANGES` file. Notes in `VERDICT: PASS` files are optional.
 6. When started for a rework: `<scratch>/rework.md` and `git log --oneline <base>..HEAD`, so you know what is there.
@@ -53,10 +53,10 @@ When the config has a `## Specs` section, a ticket's spec is not an issue but th
 - Work test-first with `tdd`, one vertical slice at a time; a bug starts with `diagnosing-bugs`. Run type-checks and single test files as you go.
 - Work the layers the ticket touches from the data outwards (schema, shared contract, backend, frontend, docs), each by the rules of its package `AGENTS.md`:
     - **Schema**: take the schema lock first: `mkdir <schema lock> && echo <job> > <schema lock>/owner`. When `mkdir` fails and `owner` names another job, report BLOCKED with `Schema lock held by <owner>`; never remove a lock you don't own. Then change the schema files and create a migration with the commands of the config's `## Schema` (never edit an applied migration), then its regenerate command. No database reachable, or the migration tool asks to reset the database: BLOCKED, and never reset it. The orchestrator releases the lock when the job ends.
-    - **Docs**: update every owning doc in the same commit as the code, as the config's `## Docs` says. New domain terms go into `CONTEXT.md`.
+    - **Docs**: update every owning doc in the same commit as the code, as the config's `## Docs` says. New domain terms go into the glossary.
 - Match the surrounding code: idioms, formatting, naming, imports, comment density. Code in English, user-facing copy in the language `AGENTS.md` names.
 - Make the smallest change that fully meets the ticket. Reuse shared types and helpers before writing one.
-- A large decision is the human's: a new service or provider, a cost, an irreversible data choice, an ADR conflict, a change to the design system, or a new screen without an approved mockup. Report BLOCKED. Small ambiguities you decide yourself and list as Assumptions.
+- A large decision is the human's: anything the config's `## Product decisions` lists, a new service or provider, a cost, an irreversible data choice, a conflict with a decision record, a change to the design system, or a new screen without an approved mockup. Report BLOCKED. Small ambiguities you decide yourself and list as Assumptions.
 - **Bundle** (more than one ticket): build them one after another in the given order, each to its own acceptance criteria, with its own commits. A ticket you can't build drops out: leave the tree as its predecessor left it (`git restore` and `git clean` on its files only), drop every later ticket it blocks too, list each under `## Dropped` with the reason, and go on with the rest. When every ticket drops, report BLOCKED.
 - A small fix stays one bug or one copy change, with no new screen, no new schema model or migration and no new dependency. When it turns out bigger, report BLOCKED.
 
@@ -100,7 +100,7 @@ TITLE: <type>(<packages>): <what changes, in English>
 Closes #<n>
 ```
 
-The first line is the PR title, line 2 is blank, the body starts on line 3. One `Closes #<n>` line per ticket you built, none for a dropped one or a small fix. Evidence is your test runs: the test red before the change, green after. Merge Danger names the door and the blast radius. Use the domain terms of `CONTEXT.md`.
+The first line is the PR title, line 2 is blank, the body starts on line 3. One `Closes #<n>` line per ticket you built, none for a dropped one or a small fix. Evidence is your test runs: the test red before the change, green after. Merge Danger names the door and the blast radius. Use the domain terms of the glossary.
 
 ## Report
 

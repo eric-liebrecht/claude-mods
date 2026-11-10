@@ -73,6 +73,11 @@ export function namedLines(body = "") {
 	return result;
 }
 
+/** An unfilled `<…>` placeholder of the template; `<files>`, `<base>`, `<port>`, `<spec>` and `<name>` are filled by the factory. */
+export function hasPlaceholder(text = "") {
+	return /<(?!(?:files|base|port|spec|name)>)[^>\n]*>/.test(text);
+}
+
 /** Every backtick span of a value, for lists such as `Protected branches: \`main\`, \`develop\``. */
 export function backtickList(text = "") {
 	return [...text.matchAll(/`([^`]+)`/g)].map((match) => match[1]);
@@ -108,9 +113,15 @@ export function parseConfig(text) {
 			ci = { enabled: true, wait: number("Wait", 20), fixRounds: number("Fix rounds", 1) };
 		}
 	}
+	const standards = namedLines(all.get("Standards"));
+	const language = (repository.get("Language")?.code ?? "de").toLowerCase().startsWith("en") ? "en" : "de";
 	return {
 		headings: [...all.keys()],
 		sections: all,
+		language,
+		glossary: standards.get("Glossary")?.code ?? null,
+		decisions: standards.get("Decisions")?.code ?? null,
+		issueTracker: standards.get("Issue tracker")?.code ?? null,
 		integration,
 		protected: [...new Set([...protectedBranches, integration])],
 		setup: codeLines(all.get("Setup")),
@@ -132,15 +143,18 @@ export function validDate(text) {
 	return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === text;
 }
 
-const FREIGABE = /^##\s+Freigabe\b/m;
+const FREIGABE = /^##\s+(Freigabe|Approval)\b/m;
 
-/** Released as SKILL.md's Freigabe defines it: a filled-in `Freigegeben von:` line, or `Status: freigegeben (<date>)` without the block. */
+/**
+ * Released as SKILL.md's Freigabe defines it: a filled-in `Freigegeben von:` line (`Approved by:` in English), or
+ * `Status: freigegeben (<date>)` (`released`) without the block. Both languages count in every repo.
+ */
 export function isReleased(body = "") {
 	if (FREIGABE.test(body)) {
-		const line = /^\s*-\s*Freigegeben von:\s*(.+?)\s*\[([^\]]*)\]\s*$/m.exec(body);
+		const line = /^\s*-\s*(?:Freigegeben von|Approved by):\s*(.+?)\s*\[([^\]]*)\]\s*$/m.exec(body);
 		return Boolean(line && line[1] !== "Name" && validDate(line[2].trim()));
 	}
-	const status = /^Status:\s*freigegeben\s*\(\s*(\d{4}-\d{2}-\d{2})/im.exec(body);
+	const status = /^Status:\s*(?:freigegeben|released)\s*\(\s*(\d{4}-\d{2}-\d{2})/im.exec(body);
 	return Boolean(status && validDate(status[1]));
 }
 

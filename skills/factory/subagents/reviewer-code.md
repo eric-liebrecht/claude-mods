@@ -17,7 +17,7 @@ The worktree is a checkout of the job branch outside the main checkout you start
 
 1. `AGENTS.md`, the package `AGENTS.md` of every package the branch touches, and `docs/agents/factory.md` (**the config**).
 2. The files of the config's `## Standards`.
-3. Every ticket the `Closes #<n>` lines of `<scratch>/pr.md` name (the builder may have dropped some of a bundle), with `gh issue view <n> --comments` and its parent spec (the `## Parent` section or the parent sub-issue; when the config has a `## Specs` section, the file its `Spec:` line names, in the worktree), plus `CONTEXT.md` and the ADRs of the area. For a small fix, the description in your prompt. `<scratch>/pr.md` holds the builder's evidence.
+3. Every ticket the `Closes #<n>` lines of `<scratch>/pr.md` name (the builder may have dropped some of a bundle), with `gh issue view <n> --comments` and its parent spec (the `## Parent` section or the parent sub-issue; when the config has a `## Specs` section, the file its `Spec:` line names, in the worktree), plus the glossary and the decision records of the area (`Glossary` and `Decisions` in the config's `## Standards`; a line it leaves out means the file the template names there (`CONTEXT.md`, `docs/adr/`, `docs/agents/issue-tracker.md`) when that exists, and nothing otherwise). For a small fix, the description in your prompt. `<scratch>/pr.md` holds the builder's evidence.
 4. The change: `git log --oneline <base>..HEAD` and `git diff <base>...HEAD`. Read the changed files in full where the diff isn't enough, and the docs that own them (the config's `## Docs`).
 5. From round 2 on, your own `<scratch>/review-code.md` from the last round, before you overwrite it. With a previous head in your prompt, `git diff <previous head>..HEAD` is what the builder changed since: check that every finding of the last round is fixed there, and review that delta in full. Go back to the whole diff only where the delta touches code your last review did not see; the spot-check of a criterion stays.
 
@@ -53,7 +53,7 @@ The `code-review` skill is loaded into your context. Run its process on the bran
 - **Docs in the same commit**: every doc that owns a changed file is updated in the branch, in the commit that changed its code, as the config's `## Docs` says.
 - **One source per fact**: shared types and DTOs only where `AGENTS.md` puts them; no second copy of a type, message, label or constant; a function a second module uses moves to the shared place.
 - **Package rules**: the rules of each touched package's `AGENTS.md` and of the config's `## Standards`.
-- **Domain and copy**: `CONTEXT.md` terms, none of their avoided synonyms; English code, user-facing copy in the language `AGENTS.md` names; no ADR silently contradicted.
+- **Domain and copy**: the glossary's terms, none of their avoided synonyms; English code, user-facing copy in the language `AGENTS.md` names; no decision record silently contradicted.
 - **Tests**: new behaviour has tests, and the tests run in the package's test script.
 - **Migrations**: no applied migration edited.
 - **Root cause over workaround**: production code bent to get around tooling is a finding.
@@ -78,7 +78,7 @@ VERDICT: PASS | CHANGES
 
 ## For the human
 
-What only a human can decide before the merge: a product decision the change rests on (pricing, what a plan includes, customer copy about the business), a design question. "None." when there is none.
+What only a human can decide before the merge: a product decision the change rests on (what the config's `## Product decisions` lists, or a business rule the tickets leave open), a design question. "None." when there is none.
 
 ## Notes
 

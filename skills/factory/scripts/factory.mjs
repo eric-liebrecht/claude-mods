@@ -51,6 +51,7 @@ import {
 	formatDuration,
 	formatTokens,
 	hasCriteria,
+	hasPlaceholder,
 	headSentence,
 	installDirs,
 	isReleased,
@@ -340,6 +341,7 @@ function preflight(ctx) {
 		base,
 		me: ctx.me(),
 		specsInRepo: config.specs !== null,
+		language: config.language,
 		ci: config.ci,
 		preview: config.preview,
 		skills: ctx.skills,
@@ -483,7 +485,7 @@ function cmdClaim(ctx, { positional, flags }) {
 	} catch {
 		// only needed for gh api calls; the claim stands without it
 	}
-	return { ok: true, claimed: true, ...record, repo, ci: config.ci, preview: config.preview, dropped, warnings, head };
+	return { ok: true, claimed: true, ...record, repo, language: config.language, ci: config.ci, preview: config.preview, dropped, warnings, head };
 }
 
 function stopPreview(scratch) {
@@ -940,7 +942,9 @@ function cmdClose(ctx, { positional }) {
 					"--reason",
 					"completed",
 					"--comment",
-					`Umgesetzt in #${pr.number}, gemergt in ${config.integration}.`,
+					config.language === "en"
+						? `Implemented in #${pr.number}, merged into ${config.integration}.`
+						: `Umgesetzt in #${pr.number}, gemergt in ${config.integration}.`,
 				);
 				if (result.code === 0) {
 					entry.closed.push(number);
@@ -963,7 +967,7 @@ function cmdClose(ctx, { positional }) {
 		(openIssues ??= ghJson(ctx.main, ["issue", "list", "--state", "open", "--limit", "200", "--json", "number,body"]));
 	const specs = new Map();
 	for (const key of new Set(done.flatMap((entry) => entry.specs))) {
-		specs.set(key, config.specs ? closeFileSpec(ctx, config, key) : closeIssueSpec(ctx, repo, key, openWithBodies));
+		specs.set(key, config.specs ? closeFileSpec(ctx, config, key) : closeIssueSpec(ctx, repo, key, openWithBodies, config.language));
 	}
 	for (const entry of done) {
 		const changed = entry.changed || entry.specs.some((key) => specs.get(key).changed);
@@ -979,7 +983,7 @@ function parentOfClosed(ctx, repo, number, body) {
 	return parentFromBody(body);
 }
 
-function closeIssueSpec(ctx, repo, spec, openWithBodies) {
+function closeIssueSpec(ctx, repo, spec, openWithBodies, language) {
 	const view = ghJson(ctx.main, ["issue", "view", String(spec), "--json", "state"]);
 	if (view.state !== "OPEN") return { text: `#${spec} geschlossen`, changed: false };
 	const subs = gh(ctx.main, "api", "--paginate", `repos/${repo}/issues/${spec}/sub_issues`, "--jq", ".[] | [.number, .state] | @tsv");
@@ -1003,7 +1007,7 @@ function closeIssueSpec(ctx, repo, spec, openWithBodies) {
 		"--reason",
 		"completed",
 		"--comment",
-		`Alle Tickets erledigt: ${list}. Geschlossen mit /factory close.`,
+		language === "en" ? `All tickets done: ${list}. Closed with /factory close.` : `Alle Tickets erledigt: ${list}. Geschlossen mit /factory close.`,
 	);
 	return result.code === 0 ? { text: `#${spec} geschlossen`, changed: true } : { text: `#${spec} ⛔ schließen fehlgeschlagen`, changed: false };
 }
@@ -1055,7 +1059,9 @@ function closeFileSpec(ctx, config, path) {
 				"--title",
 				`docs(specs): mark ${spec} as implemented`,
 				"--body",
-				`Alle Tickets der Spec erledigt: ${tickets.join(", ") || "–"}. Angelegt mit /factory close.`,
+				config.language === "en"
+					? `All tickets of the spec done: ${tickets.join(", ") || "–"}. Opened with /factory close.`
+					: `Alle Tickets der Spec erledigt: ${tickets.join(", ") || "–"}. Angelegt mit /factory close.`,
 			),
 			"PR-Erstellung fehlgeschlagen",
 		);
@@ -1142,6 +1148,16 @@ function cmdDoctor(ctx, { flags }) {
 			const unknown = [...new Set(lines.flatMap(commandHeads).filter((head) => !onPath(head)))];
 			if (unknown.length > 0) add("warn", "Config", `## ${section}: nicht gefunden: ${unknown.join(", ")}`, "installieren oder Befehl korrigieren");
 		}
+		for (const [section, lines] of [["Setup", config.setup], ["Validate", config.validate], ["Check", config.check]]) {
+			if (lines.some(hasPlaceholder)) add("error", "Config", `## ${section}: Platzhalter <…> nicht ausgefüllt`, `docs/agents/factory.md: ## ${section} mit den Befehlen dieses Repos füllen`);
+		}
+		const prose = ["Repository", "Schema", "Specs", "Preview", "Standards", "Product decisions", "Danger list", "Security"].filter(
+			(section) => config.sections.has(section) && hasPlaceholder(config.sections.get(section).replace(/`<command>`/g, "")),
+		);
+		if (prose.length > 0) add("warn", "Config", `Platzhalter <…> in ## ${prose.join(", ## ")}`, "ausfüllen oder die Zeile streichen");
+		if (config.headings.includes("Standards") && !config.glossary && !config.decisions)
+			add("warn", "Config", "## Standards ohne die Zeilen Glossary, Decisions, Issue tracker (ältere Vorlage)", "Zeilen aus der Vorlage config.md übernehmen; bis dahin gelten CONTEXT.md, docs/adr/ und docs/agents/issue-tracker.md");
+		if (!config.headings.includes("Product decisions")) add("warn", "Config", "## Product decisions fehlt: Agenten kennen die Produktentscheidungen dieses Repos nicht", "Abschnitt aus der Vorlage config.md übernehmen");
 		if (config.check.some((line) => /--write\b|\s--fix\b/.test(line))) add("error", "Config", "## Check schreibt Dateien (--write/--fix)", "in ## Check nur prüfende Befehle (--check)");
 		if (config.specs) {
 			const absent = SPEC_LINES.filter((name) => !config.specs.has(name));

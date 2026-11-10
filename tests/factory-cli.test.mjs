@@ -5,7 +5,7 @@ import { createRequire } from "node:module";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
-import { BASE_GH, git, issue, issueMeta, makeRepo, NOT_FOUND, SCRIPTS, transcriptLines, VERSION, write } from "./helpers.mjs";
+import { BASE_GH, CONFIG, git, issue, issueMeta, makeRepo, NOT_FOUND, SCRIPTS, transcriptLines, VERSION, write } from "./helpers.mjs";
 
 const released = "## Freigabe\n\n- Entwurf: Factory, 2026-10-01\n- Freigegeben von: Eric [2026-10-02]\n\n## Problem Statement\n";
 const draft = "## Freigabe\n\n- Entwurf: Factory, 2026-10-01\n- Freigegeben von: Name [JJJJ-MM-TT]\n";
@@ -128,30 +128,30 @@ test("next returns the candidates in order and the tickets only blockers hold ba
 test("claim, setup, check, cleanup: one job from worktree to nothing", () => {
 	const repo = makeRepo();
 	repo.gh([...BASE_GH, ["^issue view 142 --json labels", { labels: [{ name: "ready-for-agent" }] }], ["^issue edit", ""]]);
-	const claim = repo.factory("claim", "rating-filter-142", "--mode", "build", "--branch", "feat/rating-filter-142", "--issues", "142");
+	const claim = repo.factory("claim", "search-filter-142", "--mode", "build", "--branch", "feat/search-filter-142", "--issues", "142");
 	assert.equal(claim.json.claimed, true, claim.stdout + claim.stderr);
 	const { worktree, scratch, base } = claim.json;
-	assert.equal(worktree, join(repo.root, "work", "app-factory", "rating-filter-142"));
+	assert.equal(worktree, join(repo.root, "work", "app-factory", "search-filter-142"));
 	assert.ok(scratch.startsWith(join(repo.temp, "factory", "app-")));
 	assert.match(claim.json.owner, /^[0-9a-f]{12}$/);
 	assert.equal(claim.json.repo, "o/r");
 	assert.deepEqual(claim.json.ci, { enabled: true, wait: 5, fixRounds: 1 });
 	assert.ok(existsSync(join(scratch, "history")));
 	assert.equal(base, git(repo.main, "rev-parse", "origin/main"));
-	assert.equal(git(worktree, "branch", "--show-current"), "feat/rating-filter-142");
-	assert.match(claim.json.head, /^Job: rating-filter-142\. Tickets: #142 in build order\. Worktree: .* Base: [0-9a-f]{40}\. Scratch: .* Agents: .*\.$/);
+	assert.equal(git(worktree, "branch", "--show-current"), "feat/search-filter-142");
+	assert.match(claim.json.head, /^Job: search-filter-142\. Tickets: #142 in build order\. Worktree: .* Base: [0-9a-f]{40}\. Scratch: .* Agents: .*\.$/);
 	assert.ok(repo.calls().includes("issue edit 142 --add-label factory-in-progress --add-assignee @me"));
 	assert.ok(repo.calls().some((call) => call.startsWith("label create factory-in-progress")));
 
-	const again = repo.factory("claim", "rating-filter-142", "--mode", "build", "--branch", "feat/rating-filter-142", "--issues", "142");
+	const again = repo.factory("claim", "search-filter-142", "--mode", "build", "--branch", "feat/search-filter-142", "--issues", "142");
 	assert.deepEqual([again.json.claimed, again.json.reason], [false, "läuft bereits (Worktree existiert)"]);
 
-	assert.equal(repo.factory("setup", "rating-filter-142").json.ok, true);
+	assert.equal(repo.factory("setup", "search-filter-142").json.ok, true);
 
 	write(join(worktree, "src", "filter.js"), "export const ok = 1;\n");
 	git(worktree, "add", ".");
 	git(worktree, "commit", "--quiet", "-m", "feat: filter");
-	const round1 = repo.factory("check", "rating-filter-142", "--round", "1").json;
+	const round1 = repo.factory("check", "search-filter-142", "--round", "1").json;
 	assert.equal(round1.pass, true);
 	assert.equal(round1.prev, null);
 	assert.deepEqual(round1.files, ["src/filter.js"]);
@@ -164,7 +164,7 @@ test("claim, setup, check, cleanup: one job from worktree to nothing", () => {
 	write(join(worktree, "web", "page.js"), "BAD\n");
 	git(worktree, "add", ".");
 	git(worktree, "commit", "--quiet", "-m", "feat: page");
-	const round2 = repo.factory("check", "rating-filter-142", "--round", "2").json;
+	const round2 = repo.factory("check", "search-filter-142", "--round", "2").json;
 	assert.equal(round2.pass, false);
 	assert.equal(round2.prev, round1.head);
 	assert.deepEqual(round2.deltaFiles, ["web/page.js"]);
@@ -173,22 +173,22 @@ test("claim, setup, check, cleanup: one job from worktree to nothing", () => {
 	assert.match(readFileSync(join(scratch, "check.md"), "utf8"), /BAD in web\/page\.js/);
 
 	write(join(worktree, "web", "page.js"), "fine\n");
-	const dirty = repo.factory("check", "rating-filter-142", "--round", "2").json;
+	const dirty = repo.factory("check", "search-filter-142", "--round", "2").json;
 	assert.deepEqual(dirty.failed, ["git status --porcelain"]);
-	const validate = repo.factory("check", "rating-filter-142", "--section", "Validate").json;
+	const validate = repo.factory("check", "search-filter-142", "--section", "Validate").json;
 	assert.equal(validate.pass, true, "Validate runs before the commit, a dirty tree is fine there");
 	assert.ok(existsSync(join(scratch, "validate.md")));
 
 	mkdirSync(claim.json.schemaLock, { recursive: true });
-	writeFileSync(join(claim.json.schemaLock, "owner"), "rating-filter-142\n");
-	const foreign = repo.factory("cleanup", "rating-filter-142");
+	writeFileSync(join(claim.json.schemaLock, "owner"), "search-filter-142\n");
+	const foreign = repo.factory("cleanup", "search-filter-142");
 	assert.equal(foreign.json.stop.reason, "Job gehört einer anderen Session");
 	assert.ok(existsSync(worktree), "without the owner nothing is removed");
-	const cleanup = repo.factory("cleanup", "rating-filter-142", "--owner", claim.json.owner).json;
-	assert.deepEqual(cleanup.removed, ["worktree", "branch feat/rating-filter-142", "scratch", "schema lock"]);
+	const cleanup = repo.factory("cleanup", "search-filter-142", "--owner", claim.json.owner).json;
+	assert.deepEqual(cleanup.removed, ["worktree", "branch feat/search-filter-142", "scratch", "schema lock"]);
 	assert.ok(!existsSync(worktree));
 	assert.ok(!existsSync(scratch));
-	assert.equal(git(repo.main, "branch", "--list", "feat/rating-filter-142"), "");
+	assert.equal(git(repo.main, "branch", "--list", "feat/search-filter-142"), "");
 });
 
 test("claim undoes the worktree when another session labeled the ticket, or skips it in a bundle", () => {
@@ -372,11 +372,11 @@ test("doctor reports a broken config and duplicate installs", () => {
 
 test("stats sums the job's agents from their transcripts", () => {
 	const repo = makeRepo();
-	const scratch = repo.factory("names", "rating-filter-142").json.scratch;
+	const scratch = repo.factory("names", "search-filter-142").json.scratch;
 	write(join(scratch, "agents.md"), "builder 1 aaa\nsecurity 1 bbb\nbuilder 2 aaa\ncode 1 ccc\n");
 	write(join(repo.claude, "projects", "p", "s", "subagents", "agent-aaa.jsonl"), transcriptLines());
 	write(join(repo.claude, "projects", "p", "s", "subagents", "agent-bbb.jsonl"), transcriptLines());
-	const { json } = repo.factory("stats", "rating-filter-142");
+	const { json } = repo.factory("stats", "search-filter-142");
 	assert.equal(json.agents.length, 3);
 	assert.deepEqual(json.agents[0].labels, ["builder 1", "builder 2"]);
 	assert.equal(json.agents[2].found, false);
@@ -438,14 +438,14 @@ test("check: paths with umlauts and spaces reach the commands, a UI review with 
 	const repo = makeRepo();
 	repo.gh([...BASE_GH, ["^issue view 7 --json labels", { labels: [] }], ["^issue edit", ""]]);
 	const claim = repo.factory("claim", "page-7", "--branch", "feat/page-7", "--issues", "7").json;
-	write(join(claim.worktree, "web", "Bewertungsübersicht", "a b.js"), "BAD\n");
+	write(join(claim.worktree, "web", "Übersicht", "a b.js"), "BAD\n");
 	git(claim.worktree, "add", ".");
 	git(claim.worktree, "commit", "--quiet", "-m", "feat: page");
 	const round1 = repo.factory("check", "page-7", "--round", "1").json;
-	assert.deepEqual(round1.files, ["web/Bewertungsübersicht/a b.js"]);
+	assert.deepEqual(round1.files, ["web/Übersicht/a b.js"]);
 	assert.equal(round1.ui, true);
 	assert.equal(round1.pass, false, "the check saw the file and its BAD");
-	write(join(claim.worktree, "web", "Bewertungsübersicht", "a b.js"), "fine\n");
+	write(join(claim.worktree, "web", "Übersicht", "a b.js"), "fine\n");
 	git(claim.worktree, "commit", "--quiet", "-am", "fix: page");
 	repo.factory("check", "page-7", "--round", "1");
 	writeFileSync(join(claim.scratch, "review-ui.md"), "VERDICT: CHANGES\n");
@@ -481,4 +481,25 @@ test("doctor --fix keeps a worktree whose commits are not on origin", () => {
 	assert.ok(!existsSync(pushed.worktree));
 	assert.ok(existsSync(local.worktree), "unpushed commits stay");
 	assert.ok(report.checks.some((check) => check.message.startsWith("Worktree b-9") && check.message.includes("Branch nicht gepusht")));
+});
+
+test("doctor reports the template's unfilled placeholders", () => {
+	const repo = makeRepo({ config: readFileSync(join(import.meta.dirname, "..", "skills", "factory", "config.md"), "utf8") });
+	repo.gh([...BASE_GH, ["^issue list", []], ["^pr list", []]]);
+	const messages = repo.factory("doctor").json.checks.map((check) => `${check.level} ${check.message}`);
+	for (const section of ["Setup", "Validate", "Check"]) assert.ok(messages.includes(`error ## ${section}: Platzhalter <…> nicht ausgefüllt`), section);
+	assert.ok(messages.some((line) => line.startsWith("warn Platzhalter <…> in ## ") && line.includes("Security")), messages.join("\n"));
+});
+
+test("close writes its comments in the repo's language", () => {
+	const repo = makeRepo({ config: CONFIG.replace("- Protected branches: `main`", "- Protected branches: `main`\n- Language: `en`") });
+	repo.gh([
+		...BASE_GH,
+		["^pr view 512 ", { number: 512, state: "MERGED", baseRefName: "main", body: "Closes #142\n", headRefName: "feat/a-142", url: "pr512" }],
+		["^issue view 142 --json state,labels,body", { state: "OPEN", labels: [], body: "" }],
+		["^api repos/o/r/issues/142/parent", ...NOT_FOUND],
+		["^issue close", ""],
+	]);
+	repo.factory("close", "512");
+	assert.ok(repo.calls().includes("issue close 142 --reason completed --comment Implemented in #512, merged into main."));
 });
