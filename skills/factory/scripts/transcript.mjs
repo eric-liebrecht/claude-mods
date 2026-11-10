@@ -5,9 +5,10 @@
 //   node transcript.mjs <agent id | path to .jsonl> … [--max <chars per transcript>]
 //
 // An agent id is looked up as `agent-<id>.jsonl` under `$CLAUDE_CONFIG_DIR/projects` (default `~/.claude/projects`).
-import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
+// The head of each transcript names its duration and tokens, so the retro sees what the job cost.
+import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { configDir, findTranscript, formatDuration, formatTokens, readTranscript, usageOf } from "./lib.mjs";
 
 const args = process.argv.slice(2);
 const maxIndex = args.indexOf("--max");
@@ -17,25 +18,7 @@ if (args.length === 0) {
 	process.exit(1);
 }
 
-const PROJECTS = join(process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), ".claude"), "projects");
-
-/** Finds `agent-<id>.jsonl` in any project and session below PROJECTS. */
-function findTranscript(id) {
-	const name = `agent-${id}.jsonl`;
-	const walk = (dir, depth) => {
-		if (depth > 4 || !existsSync(dir)) return null;
-		for (const entry of readdirSync(dir, { withFileTypes: true })) {
-			const path = join(dir, entry.name);
-			if (entry.isFile() && entry.name === name) return path;
-			if (entry.isDirectory()) {
-				const found = walk(path, depth + 1);
-				if (found) return found;
-			}
-		}
-		return null;
-	};
-	return walk(PROJECTS, 0);
-}
+const PROJECTS = join(configDir(), "projects");
 
 const cap = (text, limit) => (text.length > limit ? `${text.slice(0, limit)} …[+${text.length - limit}]` : text);
 const oneLine = (text) => text.replace(/\s+/g, " ").trim();
@@ -73,14 +56,8 @@ function condense(path) {
 	let calls = 0;
 	let errors = 0;
 	let resultChars = 0;
-	for (const raw of readFileSync(path, "utf8").split("\n")) {
-		if (!raw.trim()) continue;
-		let entry;
-		try {
-			entry = JSON.parse(raw);
-		} catch {
-			continue;
-		}
+	const entries = readTranscript(path);
+	for (const entry of entries) {
 		const message = entry.message;
 		if (!message || entry.isMeta) continue;
 		const content =
@@ -110,11 +87,13 @@ function condense(path) {
 		const tail = body.slice(body.length - Math.floor(max * 0.6));
 		body = `${head}\n…[${body.length - max} chars of the middle left out]…\n${tail}`;
 	}
-	return `Tool calls: ${calls}, failed: ${errors}, tool result chars: ${resultChars}\n\n${body}`;
+	const usage = usageOf(entries);
+	const cost = `Duration: ${formatDuration(usage.durationMs)}, tokens: ${formatTokens(usage.totalTokens)} (cache read ${formatTokens(usage.tokens.cacheRead)}, output ${formatTokens(usage.tokens.output)})`;
+	return `Tool calls: ${calls}, failed: ${errors}, tool result chars: ${resultChars}\n${cost}\n\n${body}`;
 }
 
 for (const arg of args) {
-	const path = arg.endsWith(".jsonl") ? arg : findTranscript(arg);
+	const path = arg.endsWith(".jsonl") ? arg : findTranscript(arg, PROJECTS);
 	console.log(`# Transcript ${arg}\n`);
 	console.log(path && existsSync(path) ? condense(path) : "Not found.");
 	console.log("");

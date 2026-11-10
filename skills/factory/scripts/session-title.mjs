@@ -31,6 +31,7 @@ function titleFor(args, cwd) {
 	const [command = "", ...rest] = args.split(/\s+/);
 	if (command === "" || command === "help") return null;
 	if (command === "close") return "Factory · close";
+	if (command === "doctor") return "Factory · doctor";
 	if (command === "next") return "Factory · next";
 	if (command === "fix") return `Factory · fix ${rest.join(" ")}`;
 	if (command === "rework") return `Factory · rework #${(rest[0] ?? "").replace(/^#/, "")}`;

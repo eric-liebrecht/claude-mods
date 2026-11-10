@@ -60,6 +60,23 @@ Optional: leave this section out when specs are issues (the factory's `## Freiga
 - Done: `<command that marks <spec> as implemented and fails when a criterion has no test>`
 - Test names: every test that proves a criterion names it as `<spec>/AC-<n>`.
 
+## Preview
+
+Optional: leave this section out (or write `None.`) when the repo has no screens to look at. With it, the factory's UI reviewer starts the job's worktree and screenshots the screens a round changes. `<port>` is a free port the factory picks; it is also in `PORT`.
+
+- Start: `pnpm --filter web dev --port <port>`
+- URL: `http://localhost:<port>/`
+- Paths: `apps/web/**`, `packages/ui/**` (a round whose changes touch none of them gets no UI review; without this line, every round does)
+- Timeout: 120 seconds until the URL answers
+- Login: how the reviewer gets past a login in the dev server (a seeded user, a dev bypass), or leave the line out
+
+## CI
+
+Optional: without this section the factory waits up to 20 minutes for the PR's checks and gives the builder one round to fix a red CI. `None.` turns it off.
+
+- Wait: 20 minutes
+- Fix rounds: 1
+
 ## Standards
 
 Files the code reviewer reads for the Standards axis, besides `AGENTS.md` and the package `AGENTS.md` files:
@@ -80,6 +97,14 @@ Paths and topics a human must look at before a PR is merged. A PR that touches o
 
 ## Security
 
-What the security reviewer checks in this repo, on top of its general list: the tenant, how access is decided, which actions are dangerous and have exactly one entry, which external writes and messages need a confirmation.
+What the security reviewer checks in this repo, on top of its general list. Its general list knows no repo: name here who owns which data, how access is decided, which actions are dangerous and have exactly one entry, which external writes and messages need a confirmation, and where the shared input schemas and the URL check live. For example:
 
-- None yet.
+- Owner of data: the organisation (`organizationId` from the session), never from the request body.
+- Access: the global session guard; open routes carry `@Public()` with a reason; roles via `@Roles()`.
+- Gates: subscription and onboarding; a new exception names its reason.
+- Dangerous actions and their one entry: deleting an organisation (`OrganizationService.delete`), publishing a reply (`ReplyPublisher`).
+- External writes and customer messages: only after the confirmation the spec names.
+- Input and URLs: shared zod schemas in `packages/contracts`; outgoing URLs through `assertPublicUrl`.
+- Variables that reach the browser: `NEXT_PUBLIC_*`, never a secret.
+
+Replace the examples with this repo's points, or write `- None yet.`

@@ -15,18 +15,19 @@ The worktree is the job's checkout; read the repo there. The shell returns to th
 
 1. `<skills>/retro/SKILL.md` (`<skills>` and `<agents>` are the folders your prompt names): its steps, categories and reference are yours (it can't be preloaded, so read the file). The session it means is this job; the user it presents to is the factory, through `retro.md`.
 2. `<scratch>/agents.md`: one line per agent run of the job, with its agent, round and agent id.
-3. The transcripts, condensed: `node <skills>/factory/scripts/transcript.mjs <id> …` from the main checkout, one call per agent id, in the order of `agents.md`. Each prints the prompts, the agent's texts, every tool call as one line and every failed tool result. Read them one at a time; for a long builder transcript, pass `--max 40000`.
-4. `<scratch>/history/`: the review files of every round (`review-security-<N>.md`, `review-code-<N>.md`), the builder's reports (`builder-<N>.md`), and `<scratch>/pr.md`.
-5. What the agents were told: `<agents>/*.md`, `<skills>/factory/SKILL.md`, `docs/agents/factory.md`, `AGENTS.md` and the package `AGENTS.md` the job touched. A finding about one of them names the file and the line.
+3. What the job cost: `node <skills>/factory/scripts/factory.mjs stats <job>` from the main checkout prints duration, tokens and tool calls per agent run. Start with the most expensive.
+4. The transcripts, condensed: `node <skills>/factory/scripts/transcript.mjs <id> …` from the main checkout, one call per agent id, in the order of `agents.md`. Each prints its duration and tokens, the prompts, the agent's texts, every tool call as one line and every failed tool result. Read them one at a time; for a long builder transcript, pass `--max 40000`.
+5. `<scratch>/history/`: the review files of every round (`review-security-<N>.md`, `review-code-<N>.md`, `review-ui-<N>.md`), the factory's check results (`check-<N>.md`), the CI logs (`ci-<N>.md`), the builder's reports (`builder-<N>.md`), and `<scratch>/pr.md`.
+6. What the agents were told: `<agents>/*.md`, `<skills>/factory/SKILL.md`, `docs/agents/factory.md`, `AGENTS.md` and the package `AGENTS.md` the job touched. A finding about one of them names the file and the line.
 
 ## Look for
 
 The retro skill's categories, applied to this job's agents:
 
-- A finding a reviewer raised that a check, a lint rule or a line in `docs/agents/factory.md` could have stopped before the review (each extra round costs a builder and two reviewers).
+- A finding a reviewer raised, a failed gate or a red CI that a check, a lint rule or a line in `docs/agents/factory.md` could have stopped earlier (each extra round costs a builder and the reviewers; a red CI after the PR costs a CI round).
 - Searches the builder repeated, files it read many times, places it looked in vain: a missing navigation pointer.
 - Failed tool calls and their cause: a wrong command in `docs/agents/factory.md`, a setup step missing, an environment gap.
-- Expensive calls: whole-repo checks where one package would do, large outputs nobody read.
+- Expensive calls: whole-repo checks where one package would do, large outputs nobody read, an agent whose tokens (from `stats`) stand out against what it did.
 - A reviewer finding that was wrong or that the other round contradicted: a rule to clarify.
 - What the agent prompts or the factory skill told the agents that they ignored or that changed nothing.
 

@@ -1,0 +1,27 @@
+# Runs the tests of the factory's scripts and install.mjs on every pull request and on main.
+name: CI
+
+on:
+    pull_request:
+    push:
+        branches: [main]
+
+permissions:
+    contents: read
+
+jobs:
+    test:
+        runs-on: ${{ matrix.os }}
+        strategy:
+            fail-fast: false
+            matrix:
+                os: [ubuntu-latest, macos-latest]
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+            - name: Syntax of every script
+              run: for file in install.mjs skills/factory/scripts/*.mjs tests/*.mjs; do node --check "$file"; done
+            - name: Tests
+              run: npm test
