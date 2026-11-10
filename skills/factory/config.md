@@ -11,7 +11,7 @@ PRs go into the integration branch. The factory never pushes to a protected bran
 
 ## Setup
 
-The fresh-checkout setup the factory runs in every new worktree, one command per line:
+The fresh-checkout setup the factory runs in every new worktree, one command per line (each runs in the worktree's root in a shell of its own, so a `cd` does not carry over; end a line with `\` to continue it):
 
 ```bash
 pnpm install --frozen-lockfile

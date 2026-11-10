@@ -132,7 +132,10 @@ test("claim, setup, check, cleanup: one job from worktree to nothing", () => {
 	assert.equal(claim.json.claimed, true, claim.stdout + claim.stderr);
 	const { worktree, scratch, base } = claim.json;
 	assert.equal(worktree, join(repo.root, "work", "app-factory", "rating-filter-142"));
-	assert.ok(scratch.startsWith(join(repo.temp, "factory", "app")));
+	assert.ok(scratch.startsWith(join(repo.temp, "factory", "app-")));
+	assert.match(claim.json.owner, /^[0-9a-f]{12}$/);
+	assert.equal(claim.json.repo, "o/r");
+	assert.deepEqual(claim.json.ci, { enabled: true, wait: 5, fixRounds: 1 });
 	assert.ok(existsSync(join(scratch, "history")));
 	assert.equal(base, git(repo.main, "rev-parse", "origin/main"));
 	assert.equal(git(worktree, "branch", "--show-current"), "feat/rating-filter-142");
@@ -176,9 +179,12 @@ test("claim, setup, check, cleanup: one job from worktree to nothing", () => {
 	assert.equal(validate.pass, true, "Validate runs before the commit, a dirty tree is fine there");
 	assert.ok(existsSync(join(scratch, "validate.md")));
 
-	mkdirSync(join(repo.temp, "factory", "app", ".schema-lock"), { recursive: true });
-	writeFileSync(join(repo.temp, "factory", "app", ".schema-lock", "owner"), "rating-filter-142\n");
-	const cleanup = repo.factory("cleanup", "rating-filter-142").json;
+	mkdirSync(claim.json.schemaLock, { recursive: true });
+	writeFileSync(join(claim.json.schemaLock, "owner"), "rating-filter-142\n");
+	const foreign = repo.factory("cleanup", "rating-filter-142");
+	assert.equal(foreign.json.stop.reason, "Job gehört einer anderen Session");
+	assert.ok(existsSync(worktree), "without the owner nothing is removed");
+	const cleanup = repo.factory("cleanup", "rating-filter-142", "--owner", claim.json.owner).json;
 	assert.deepEqual(cleanup.removed, ["worktree", "branch feat/rating-filter-142", "scratch", "schema lock"]);
 	assert.ok(!existsSync(worktree));
 	assert.ok(!existsSync(scratch));
@@ -224,7 +230,7 @@ test("claim for a spec, a fix and a rework", () => {
 	git(fix.worktree, "add", ".");
 	git(fix.worktree, "commit", "--quiet", "-m", "fix: a");
 	git(fix.worktree, "push", "--quiet", "origin", "fix/footer-typo");
-	repo.factory("cleanup", "footer-typo");
+	repo.factory("cleanup", "footer-typo", "--owner", fix.owner);
 	const rework = repo.factory("claim", "footer-typo", "--mode", "rework", "--branch", "fix/footer-typo").json;
 	assert.equal(rework.claimed, true, JSON.stringify(rework));
 	assert.equal(rework.base, git(repo.main, "rev-parse", "origin/main"));
@@ -253,6 +259,13 @@ test("ci: green, red with the failed log, no checks", () => {
 	assert.match(text, /## CI \/ test/);
 	assert.match(text, /expected 1 to be 2/);
 	assert.equal(repo.factory("ci", "3", "--grace", "0").json.state, "none");
+	repo.gh([
+		["^pr view 1 --json headRefOid", "old0\n"],
+		["^pr checks 3 ", "", 1, "no checks reported on the 'feat/x' branch"],
+		["^pr checks 1 ", [{ name: "test", state: "FAILURE", bucket: "fail", link, workflow: "CI" }]],
+	]);
+	const stale = repo.factory("ci", "1", "--sha", "new1", "--wait", "1", "--interval", "1").json;
+	assert.equal(stale.state, "pending", "the checks of the commit before do not count");
 	const waiting = repo.factory("ci", "3", "--grace", "60", "--wait", "1", "--interval", "1").json;
 	assert.equal(waiting.state, "pending", "checks that are not registered yet are still pending");
 });
@@ -323,7 +336,8 @@ test("doctor finds leftovers and stale labels, --fix removes what is safe", () =
 		["^api --paginate repos/o/r/issues/148/events", `${old}\n`],
 		["^issue edit 148 --remove-label", ""],
 	]);
-	mkdirSync(join(repo.temp, "factory", "app", "gone-job-1"), { recursive: true });
+	const root = repo.factory("names", "x").json.root;
+	mkdirSync(join(root, "gone-job-1"), { recursive: true });
 	const report = repo.factory("doctor").json;
 	const messages = report.checks.map((check) => `${check.level} ${check.area}: ${check.message}`);
 	assert.ok(messages.includes("ok Config: alle Abschnitte da"), messages.join("\n"));
@@ -336,7 +350,7 @@ test("doctor finds leftovers and stale labels, --fix removes what is safe", () =
 
 	const fixed = repo.factory("doctor", "--fix").json;
 	assert.deepEqual(fixed.fixed.sort(), ["#148: Label factory-in-progress entfernt", "Scratch gone-job-1 entfernt"]);
-	assert.ok(!existsSync(join(repo.temp, "factory", "app", "gone-job-1")));
+	assert.ok(!existsSync(join(root, "gone-job-1")));
 	assert.ok(repo.calls().includes("issue edit 148 --remove-label factory-in-progress"));
 });
 
@@ -358,7 +372,7 @@ test("doctor reports a broken config and duplicate installs", () => {
 
 test("stats sums the job's agents from their transcripts", () => {
 	const repo = makeRepo();
-	const scratch = join(repo.temp, "factory", "app", "rating-filter-142");
+	const scratch = repo.factory("names", "rating-filter-142").json.scratch;
 	write(join(scratch, "agents.md"), "builder 1 aaa\nsecurity 1 bbb\nbuilder 2 aaa\ncode 1 ccc\n");
 	write(join(repo.claude, "projects", "p", "s", "subagents", "agent-aaa.jsonl"), transcriptLines());
 	write(join(repo.claude, "projects", "p", "s", "subagents", "agent-bbb.jsonl"), transcriptLines());
@@ -383,7 +397,7 @@ test("preview starts the config's server on a free port and stops it", async () 
 	await new Promise((done) => setTimeout(done, 300));
 	await assert.rejects(fetch(started.url));
 	assert.ok(claim.claimed);
-	repo.factory("cleanup", "page-1");
+	repo.factory("cleanup", "page-1", "--force");
 });
 
 const playwright = (() => {
@@ -418,4 +432,53 @@ test("screenshot takes a PNG and reports console errors", { skip: playwright ? f
 	} finally {
 		server.close();
 	}
+});
+
+test("check: paths with umlauts and spaces reach the commands, a UI review with CHANGES runs again", () => {
+	const repo = makeRepo();
+	repo.gh([...BASE_GH, ["^issue view 7 --json labels", { labels: [] }], ["^issue edit", ""]]);
+	const claim = repo.factory("claim", "page-7", "--branch", "feat/page-7", "--issues", "7").json;
+	write(join(claim.worktree, "web", "Bewertungsübersicht", "a b.js"), "BAD\n");
+	git(claim.worktree, "add", ".");
+	git(claim.worktree, "commit", "--quiet", "-m", "feat: page");
+	const round1 = repo.factory("check", "page-7", "--round", "1").json;
+	assert.deepEqual(round1.files, ["web/Bewertungsübersicht/a b.js"]);
+	assert.equal(round1.ui, true);
+	assert.equal(round1.pass, false, "the check saw the file and its BAD");
+	write(join(claim.worktree, "web", "Bewertungsübersicht", "a b.js"), "fine\n");
+	git(claim.worktree, "commit", "--quiet", "-am", "fix: page");
+	repo.factory("check", "page-7", "--round", "1");
+	writeFileSync(join(claim.scratch, "review-ui.md"), "VERDICT: CHANGES\n");
+	write(join(claim.worktree, "lib", "i18n.js"), "x\n");
+	git(claim.worktree, "add", ".");
+	git(claim.worktree, "commit", "--quiet", "-m", "fix: copy");
+	const round2 = repo.factory("check", "page-7", "--round", "2").json;
+	assert.deepEqual(round2.deltaFiles, ["lib/i18n.js"]);
+	assert.equal(round2.ui, true, "the open UI finding is checked again");
+	writeFileSync(join(claim.scratch, "review-ui.md"), "VERDICT: PASS\n");
+	write(join(claim.worktree, "lib", "i18n.js"), "y\n");
+	git(claim.worktree, "commit", "--quiet", "-am", "fix: copy 2");
+	assert.equal(repo.factory("check", "page-7", "--round", "3").json.ui, false);
+});
+
+test("doctor --fix keeps a worktree whose commits are not on origin", () => {
+	const repo = makeRepo();
+	repo.gh([...BASE_GH, ["^issue list", []], ["^pr list", []], ["^issue view 9 --json labels", { labels: [] }], ["^issue edit", ""]]);
+	const pushed = repo.factory("claim", "a-9", "--branch", "feat/a-9", "--issues", "9").json;
+	const local = repo.factory("claim", "b-9", "--branch", "feat/b-9", "--issues", "9").json;
+	for (const tree of [pushed, local]) {
+		write(join(tree.worktree, `${tree.job}.txt`), "x\n");
+		git(tree.worktree, "add", ".");
+		git(tree.worktree, "commit", "--quiet", "-m", "feat: x");
+	}
+	git(pushed.worktree, "push", "--quiet", "origin", "feat/a-9");
+	git(local.worktree, "push", "--quiet", "origin", "feat/b-9");
+	write(join(local.worktree, "more.txt"), "y\n");
+	git(local.worktree, "add", ".");
+	git(local.worktree, "commit", "--quiet", "-m", "feat: not pushed");
+	const report = repo.factory("doctor", "--fix", "--stale-hours", "0").json;
+	assert.ok(report.fixed.includes("Worktree a-9 entfernt"), JSON.stringify(report.fixed));
+	assert.ok(!existsSync(pushed.worktree));
+	assert.ok(existsSync(local.worktree), "unpushed commits stay");
+	assert.ok(report.checks.some((check) => check.message.startsWith("Worktree b-9") && check.message.includes("Branch nicht gepusht")));
 });

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { ROOT, tempDir, VERSION, write } from "./helpers.mjs";
@@ -82,10 +82,12 @@ test("--dry-run changes nothing", () => {
 test("--clean-project removes a repo's old copies and its hook, nothing else", () => {
 	const config = tempDir();
 	const project = tempDir();
-	write(join(project, ".claude", "skills", "tdd", "SKILL.md"), "old copy\n");
-	write(join(project, ".claude", "skills", "factory", "SKILL.md"), "old copy\n");
+	cpSync(join(ROOT, "skills", "tdd"), join(project, ".claude", "skills", "tdd"), { recursive: true });
+	write(join(project, ".claude", "skills", "pr", "SKILL.md"), "the repo's own pr skill\n");
+	cpSync(join(ROOT, "skills", "factory"), join(project, ".claude", "skills", "factory"), { recursive: true });
+	write(join(project, ".claude", "skills", "factory", ".claude-mods"), "claude-mods 1.0.0, copied\n");
 	write(join(project, ".claude", "skills", "mine", "SKILL.md"), "project skill\n");
-	write(join(project, ".claude", "agents", "builder.md"), "old\n");
+	write(join(project, ".claude", "agents", "builder.md"), `${readFileSync(join(ROOT, "skills", "factory", "subagents", "builder.md"), "utf8")}\n<!-- .claude-mods 1.0.0 -->\n`);
 	write(join(project, ".claude", "agents", "mine.md"), "project agent\n");
 	write(
 		join(project, ".claude", "settings.json"),
@@ -114,6 +116,10 @@ test("--clean-project removes a repo's old copies and its hook, nothing else", (
 	assert.deepEqual(kept.permissions, { allow: ["Bash(ls)"] });
 	assert.deepEqual(kept.hooks.UserPromptSubmit, [{ hooks: [{ type: "command", command: "echo keep" }] }]);
 	assert.ok(!existsSync(join(config, "skills")), "it installs nothing for the user");
+	assert.ok(existsSync(join(project, ".claude", "skills", "pr", "SKILL.md")), "a copy that differs stays");
+	assert.match(result.stderr, /kept .*pr: differs from claude-mods/);
+	assert.equal(install(config, "--clean-project", project, "--force").status, 0);
+	assert.ok(!existsSync(join(project, ".claude", "skills", "pr")));
 	assert.match(install(config, "--clean-project", project).stdout, /nothing of claude-mods/);
 });
 
