@@ -9,11 +9,13 @@ You orchestrate jobs: a released ticket (`ready-for-agent`), or a **bundle** of 
 
 **GitHub is the only state.** The issue says what to build, its label `factory-in-progress` says that the factory has taken it on, from the claim until **/factory close**, its assignee says who built it, the PR is the result. The label is what lets several sessions run the factory on one repo in parallel, each in its own worktrees, on one machine or several: every session skips a ticket that carries it, already in the search. Everything else is throwaway: the job's worktree and its scratch folder exist while this session runs the job and are removed at the end, so nothing of a job lands in the repo or outlives the session.
 
-**`docs/agents/factory.md` is the repo's part.** It names the integration branch, the setup, the checks, the schema commands, the docs rule, the standards, the danger list and the security points of this repo, and optionally the specs in the repo (`## Specs`), the preview for the UI review (`## Preview`) and the CI watch (`## CI`). You and every agent follow it where this file says "the config".
+**`docs/agents/factory.md` is the repo's part.** It names the integration branch, the language, the setup, the checks, the schema commands, the docs rule, the standards (glossary, decision records, issue tracker fallbacks), the product decisions only a human makes, the danger list and the security points of this repo, and optionally the specs in the repo (`## Specs`), the preview for the UI review (`## Preview`) and the CI watch (`## CI`). You and every agent follow it where this file says "the config".
 
 **`factory.mjs` runs the fixed steps.** `node <skills>/factory/scripts/factory.mjs <command>` (below just `factory.mjs`, always from the main checkout) does the ready check, the claim, the setup, the gate before a review, the CI watch, the clean up, `/factory close` and `/factory doctor`, and prints one JSON object. Run it instead of doing its steps by hand. On `ok: false` stop with `⛔ <stop.reason>`, `Du musst: <stop.mustDo>` when it names one, and `error` under `Fehler <job>:`. It stops with `⛔ docs/agents/factory.md fehlt` and `⛔ Factory-Agenten fehlen` itself.
 
 **Every message to the user follows [Output](#output)**, from the first line to the last, also when the user asks for the status.
+
+**Language.** `language` of `factory.mjs ready` or `claim` is the config's `Language`: `de` (the default) or `en`. Everything the factory writes is in it: its messages, the comments it puts on issues and PRs, the PR footer, `spec-pr.md`, the specs it drafts. This file writes all of them in German; with `en` write each in English with the same structure and fixed words translated (`Du musst:` → `You must:`, `Runde` → `Round`, `Ergebnis` → `Result`, `Aufwand:` → `Effort:`, `Aufgeräumt:` → `Cleaned up:`, `läuft` → `running`, `wartet auf` → `waiting for`, `fertig` → `done`, `Entwurf` → `draft`, `Befund(e)` → `finding(s)`, `nicht gestartet` → `not started`), and translate the German `reason`, `mustDo`, `line` and `message` texts of `factory.mjs`. `/factory help` stays German: it runs before the config is read.
 
 ## /factory or /factory help
 
@@ -49,7 +51,7 @@ Die Factory mergt nie und schließt Tickets nur mit /factory close.
 
 ## Session title
 
-The session carries the name of what the factory does, so the user finds it among their sessions: `Factory · #142 Bewertungsfilter` (job label and the issue title cut to three words, as in **Start**), `Factory · #142, #150` for several jobs, `Factory · #143+#147 Review-Filter` for a bundle, `Factory · fix <slug>`, `Factory · rework #<pr>`, `Factory · close`, `Factory · doctor`. `/factory help` keeps the name it has.
+The session carries the name of what the factory does, so the user finds it among their sessions: `Factory · #142 Suchfilter` (job label and the issue title cut to three words, as in **Start**), `Factory · #142, #150` for several jobs, `Factory · #143+#147 Export-Formate` for a bundle, `Factory · fix <slug>`, `Factory · rework #<pr>`, `Factory · close`, `Factory · doctor`. `/factory help` keeps the name it has.
 
 - In a local session the hook `scripts/session-title.mjs` sets it from the `/factory` prompt before you start (`UserPromptSubmit`, `sessionTitle`); `install.mjs` of claude-mods registers it once in the user's `~/.claude/settings.json`, a project-local install in the repo's `.claude/settings.json` (README of claude-mods).
 - When a tool that sets the session title is available, call it right after **Start** with the title of the jobs that started, also for `/factory next`, whose tickets the hook cannot know. In a cloud session that is `set_session_title` of the `claude-code-remote` server (load it with ToolSearch when it is deferred), with the id `get_session` without arguments returns.
@@ -96,7 +98,7 @@ The agents live in `<agents>` (**Names**); their source is `<skills>/factory/sub
 - **Repo**: `<owner>/<name>`, `repo` in the JSON of `factory.mjs ready` or `claim`.
 - **Integration branch** (`<integration>`): the config's `Integration branch`. **Protected branches**: the config's list, plus the integration branch and the default branch.
 - **Spec job**: `spec-<n>[-<m> …]`, the numbers of the tickets without a spec, ascending (`spec-142-143`). It drafts a spec and builds nothing: no branch, a detached worktree, the scratch folder. With **Specs in the repo**, **Publish** puts the spec on the branch `spec/<spec>`, `<spec>` being the spec's folder name.
-- **Job**: `<slug>-<n>`, a 2 to 4 word kebab-case English slug of the issue title plus the issue number (`rating-filter-142`). A bundle: a slug of what its tickets share plus every number, ascending (`review-filters-142-143-147`). For `/factory fix` without an issue: `<slug>` alone.
+- **Job**: `<slug>-<n>`, a 2 to 4 word kebab-case English slug of the issue title plus the issue number (`search-filter-142`). A bundle: a slug of what its tickets share plus every number, ascending (`export-formats-142-143-147`). For `/factory fix` without an issue: `<slug>` alone.
 - **Branch**: `<type>/<job>`. `type` is `fix` when every ticket describes a bug, otherwise `feat`.
 - **Worktree**, **Scratch**, **Schema lock**: `factory.mjs names <job>` prints them, and **Claim** returns them. The worktree is `<main>/../<name>-factory/<job>`, `<main>` the main checkout, `<name>` its directory name. Your session stays in the main checkout and only runs `git fetch`, `git worktree`, `git branch`, `gh` and `factory.mjs` there: it belongs to the user. The scratch folder is `<temp>/factory/<name>-<hash>/<job>/` in the system's temp folder, `<hash>` a short hash of the main checkout's path; agents pass notes through it, nothing in it is kept. The schema lock is `<temp>/factory/<name>-<hash>/.schema-lock/`: all jobs of this repo on this machine share one dev database, so only one job at a time applies a migration. The builder takes it with `mkdir`; it holds the job name in `owner`.
 - **Base**: the `origin/<integration>` commit the branch sits on: `base` of **Claim**, the rebase target after a **Sync**. Agents diff against it, so a moving integration branch never changes what they review.
@@ -124,7 +126,9 @@ Every spec the factory drafts starts with this block. The human releases it by r
 - Freigegeben von: Name [JJJJ-MM-TT]
 ```
 
-- **Released** means the line reads `- Freigegeben von: <name> [YYYY-MM-DD]`: a name other than `Name`, then a real date in square brackets (`Freigegeben von: Erika Muster [2026-10-24]`). A spec without the block is released by a line `Status: freigegeben (<YYYY-MM-DD>)` with a real date. Nothing else is a Freigabe: not a `ready-for-agent` label on the spec, not an `Entwurf` line or `Status: entwurf`, not a date without a name in the block.
+With `Language: en` the factory drafts it as `## Approval`, `- Draft: …` and `- Approved by: Name [YYYY-MM-DD]`. Both forms count in every repo: below, `## Freigabe` and `Freigegeben von:` stand for either.
+
+- **Released** means the line reads `- Freigegeben von: <name> [YYYY-MM-DD]`: a name other than `Name`, then a real date in square brackets (`Freigegeben von: Erika Muster [2026-10-24]`). A spec without the block is released by a line `Status: freigegeben (<YYYY-MM-DD>)` (`Status: released (…)`) with a real date. Nothing else is a Freigabe: not a `ready-for-agent` label on the spec, not an `Entwurf` line or `Status: entwurf`, not a date without a name in the block.
 - **A spec** is an issue whose body has the `## Freigabe` block, a `## Problem Statement` or `## User Stories` section, or a line starting with `Status:`, or that has sub-issues.
 
 `factory.mjs` applies exactly these rules (`scripts/lib.mjs`: `isReleased`, `isSpec`).
@@ -163,7 +167,7 @@ A ticket without a parent spec gets one drafted and published as a draft. Nothin
 
 1. **Claim.** `factory.mjs claim <job> --mode spec --issues <n>[,<m> …]`: a detached worktree of `origin/<integration>` and the scratch folder. `claimed: false`: another session drafts this spec, stop with `⛔ läuft bereits (Worktree existiert)`, with no **Clean up**. No **Setup**: the spec writer only reads. The ticket gets neither the in-progress label nor an assignee: nothing is built from it yet, and the human starts it with `/factory #<n>` once the spec is released.
 2. **Draft.** Spawn `spec-writer` **with the name `spec-writer-<job>`** and the `head` of the claim as the prompt (`Job: <job>. Tickets: #<n>[, #<m> …]. Worktree: <worktree>. Scratch: <scratch>. Skills: <skills>.`). On `STATUS: BLOCKED`, go to step 5 with the blocker as `⛔ <reason>`.
-3. **Check.** Line 1 of `<scratch>/spec.md` starts with `TITLE: `, line 3 is `## Freigabe`, and its `Freigegeben von:` line is still `- Freigegeben von: Name [JJJJ-MM-TT]`. Otherwise go to step 5 with `⛔ Spec-Entwurf fehlerhaft`.
+3. **Check.** Line 1 of `<scratch>/spec.md` starts with `TITLE: `, line 3 is `## Freigabe` (`## Approval`), and its `Freigegeben von:` line is still `- Freigegeben von: Name [JJJJ-MM-TT]` (`- Approved by: Name [YYYY-MM-DD]`). Otherwise go to step 5 with `⛔ Spec-Entwurf fehlerhaft`.
 4. **Publish.** Check every ticket once more for a parent (`factory.mjs ready <n> …`: a ticket whose `draftSpec` is now false has got one in the meantime); leave those out, and when none is left, go to step 5. Then:
     - `tail -n +3 <scratch>/spec.md | gh issue create --title "<title>" --body-file -`, without a label: the spec isn't built itself, and a label on a spec is no Freigabe.
     - Link each ticket as a sub-issue of the spec: `gh api --method POST repos/<repo>/issues/<spec>/sub_issues -F sub_issue_id=<id>`, where `<id>` is the ticket's database id (`id` of its entry in `factory.mjs ready`). If that fails, name the ticket under `Du musst:` so the human links it.
@@ -184,7 +188,7 @@ The spec becomes a file on its own branch and a draft PR into the integration br
     - Comment on each ticket: `gh issue comment <n> --body "Spec-Entwurf in #<pr> (<path>). Gebaut wird nach Freigabe und Merge."`.
 5. **Clean up.** `factory.mjs cleanup <job> --owner <owner> --branch spec/<spec>` when **Publish** created the branch (the pushed branch lives on `origin`), otherwise without `--branch`. The job's bold row in **Status** is `📝 Spec #<pr>`, with `Du musst: #<pr>: <k> Offene Fragen klären, freigeben (<Specs: Release>), mergen, dann /factory #<n>` and each ticket whose body could not be edited (`#<n>: Zeilen Spec: und Kriterien: ergänzen`). Or `⛔ <reason>` when there is no PR.
 
-`<scratch>/spec-pr.md`, in German:
+`<scratch>/spec-pr.md`, in the config's language (here in German):
 
 ```markdown
 Spec-Entwurf der Factory für #<n>[, #<m> …]. Gebaut wird nach Freigabe und Merge.
@@ -233,12 +237,12 @@ The first line of the builder's final report is `STATUS: READY` or `STATUS: BLOC
     - The builder reports `BLOCKED` on the rebase: it aborted it, so the branch is as before. Put the conflict under Needs human and go on.
 3. **Needs human.** Collect what the human must decide before merging:
     - every path of `git diff --name-only <base>...HEAD` on the config's `## Danger list`;
-    - every item under `## For the human` in the review files, and the Assumptions from the builder's report that are product decisions (pricing, what a plan includes, customer copy about the business);
+    - every item under `## For the human` in the review files, and the Assumptions from the builder's report that are product decisions (what the config's `## Product decisions` lists, a business rule the tickets left open);
     - an unresolved conflict with the integration branch;
     - the blocker, the red checks or the exhausted rounds that sent you here.
 4. **PR text.** `<scratch>/pr.md` follows the `pr` skill: line 1 is `TITLE: <conventional commit title>`, line 2 is blank, and the body from line 3 has the headings `## Summary`, `## Evidence` and `## Merge Danger`. When one is missing, resume the builder with `pr.md does not follow the pr skill template: <what is missing>. Rewrite pr.md.` and check again; still missing, stop with `⛔ PR-Text ohne pr-Template`, leaving the worktree. Every PR the factory opens or edits takes its body from this file.
 5. Push the branch as **Linear history** says, never any other branch.
-6. Write the body to `<scratch>/pr-body.md`: `tail -n +3 <scratch>/pr.md`, then, when the Needs human list is not empty, a `## Needs human` section with it, and last the line `Gebaut mit claude-mods <version> (/factory).` when the version is known. With Needs human the PR is a draft.
+6. Write the body to `<scratch>/pr-body.md`: `tail -n +3 <scratch>/pr.md`, then, when the Needs human list is not empty, a `## Needs human` section with it, and last the line `Gebaut mit claude-mods <version> (/factory).` (`Built with …`) when the version is known. With Needs human the PR is a draft.
     - New PR: `gh pr create --base <integration> --head <branch> --title "<title>" --body-file <scratch>/pr-body.md [--draft]`.
     - Rework: the push updated the PR; `gh pr edit <pr> --body-file <scratch>/pr-body.md`, and `gh pr ready <pr> --undo` when it now needs a human.
 7. If push or PR creation fails, stop with `⛔ Push fehlgeschlagen` or `⛔ PR-Erstellung fehlgeschlagen` and the output under `Fehler <job>:`, leaving the worktree. Otherwise go to **Watch CI**.
@@ -326,7 +330,7 @@ With `--fix` it removes the leftovers that are safe to remove (a clean worktree 
 
 ## Output
 
-Every message to the user is one of the blocks below, filled in, in German, with nothing before or after it: no intro, no recap of what you did, no explanation, no tool narration, no closing remark. Only two exceptions: `/factory help` prints its own block, and a direct question from the user gets at most two sentences, followed by **Status** when jobs exist. Where the steps above say "stop", "say so" or "report", that means the block named there. Spell PRs and issues as links, `[#512](<url>)`.
+Every message to the user is one of the blocks below, filled in, in the factory's language (**Language**), with nothing before or after it: no intro, no recap of what you did, no explanation, no tool narration, no closing remark. Only two exceptions: `/factory help` prints its own block, and a direct question from the user gets at most two sentences, followed by **Status** when jobs exist. Where the steps above say "stop", "say so" or "report", that means the block named there. Spell PRs and issues as links, `[#512](<url>)`.
 
 Fixed words, nothing else in their place:
 
@@ -334,7 +338,7 @@ Fixed words, nothing else in their place:
 - **Agent**: `builder`, `security`, `code`, `ui`, `spec-writer`, each with its round: `builder 2`, `security 1`. A rework builder counts from 1 again; a rebase is `builder <n> Rebase`, a fix after red checks `builder <n> Checks`, after a red CI `builder <n> CI`. The retro is `retro`, without a round. Steps without an agent: `Checks <n>` (the gate of round `<n>`), `CI`.
 - **Agent result**: `✓` (READY, PASS, green), `✓ <k> Commits` for a builder, `✓ Entwurf` for the spec writer, `✓ <k> Befunde` for the retro (`✓ 1 Befund`, `✓ keine Befunde`), `✗ <k> Findings: <main finding>` (CHANGES), singular for one (`✓ 1 Commit`, `✗ 1 Finding: …`), `✗ <command>` for a red gate, `✗ <check>` for a red CI, `⛔ <reason>` (BLOCKED, failure), `🔄 läuft` (spawned or waiting, not finished).
 - **Job result**: `🔄` (running), `✅ #<pr>` (PR ready, CI green), `⚠️ #<pr> Draft` (PR needs a human), `📝 Spec #<n>` (spec drafted: its issue, or its PR with **Specs in the repo**), `⛔ <reason>` (no PR).
-- A `<reason>` or `<main finding>` has at most six words and names the cause, not the step: `Blocker #158 offen`, `Spec #120 nicht freigegeben`, `läuft bereits`, `pnpm install fehlgeschlagen`, `Tenant-Filter fehlt`.
+- A `<reason>` or `<main finding>` has at most six words and names the cause, not the step: `Blocker #158 offen`, `Spec #120 nicht freigegeben`, `läuft bereits`, `npm ci fehlgeschlagen`, `Zugriffsprüfung fehlt`.
 
 ### Start
 
@@ -342,8 +346,8 @@ Once, after the ready check and the claims, before the first agent is spawned. A
 
 ```text
 Factory · 3 Jobs · claude-mods 1.4.0
-- #142 Bewertungsfilter
-- #143+#147 Review-Filter · Bündel: gleiche Spec #120
+- #142 Suchfilter
+- #143+#147 Export-Formate · Bündel: gleiche Spec #120
 - #150 CSV-Export · ohne Spec → spec-writer
 - #151 nicht gestartet: Blocker #149 offen
 ```
@@ -356,11 +360,11 @@ One line whenever an agent, a gate or a CI watch finishes, naming what comes nex
 
 ```text
 #142 · builder 1 · ✓ 4 Commits → Checks 1
-#142 · Checks 1 · ✗ pnpm lint → builder 1 Checks
+#142 · Checks 1 · ✗ npm run lint → builder 1 Checks
 #142 · builder 1 Checks · ✓ 1 Commit → Checks 1
 #142 · Checks 1 · ✓ → security 1 + code 1 + ui 1
 #142 · security 1 · ✓ → wartet auf code 1, ui 1
-#142 · code 1 · ✗ 2 Findings: Tenant-Filter fehlt → wartet auf ui 1
+#142 · code 1 · ✗ 2 Findings: Zugriffsprüfung fehlt → wartet auf ui 1
 #142 · ui 1 · ✓ → builder 2
 #143+#147 · builder 1 · ⛔ Schema-Lock → wartet auf #142
 #142 · code 2 · ✓ → Sync: Konflikt → builder 2 Rebase
@@ -371,7 +375,7 @@ One line whenever an agent, a gate or a CI watch finishes, naming what comes nex
 #142 · retro · ✓ 3 Befunde → fertig
 ```
 
-Setup, sync and PR steps without an agent get a line only when they fail or change the course: `#142 · Setup · ⛔ pnpm install fehlgeschlagen → fertig`. A green gate between two agents may share the line of the agent before it: `#142 · builder 2 · ✓ 1 Commit → Checks 2 ✓ → security 2 + code 2`.
+Setup, sync and PR steps without an agent get a line only when they fail or change the course: `#142 · Setup · ⛔ npm ci fehlgeschlagen → fertig`. A green gate between two agents may share the line of the agent before it: `#142 · builder 2 · ✓ 1 Commit → Checks 2 ✓ → security 2 + code 2`.
 
 ### Status
 
@@ -380,17 +384,17 @@ After each completed review round (all reviewers done), as the last message once
 ```text
 | Ticket / Agent | Runde | Ergebnis |
 | --- | --- | --- |
-| **#142 Bewertungsfilter** | 2/3 | 🔄 |
+| **#142 Suchfilter** | 2/3 | 🔄 |
 | ↳ builder 1 | – | ✓ 4 Commits |
 | ↳ Checks 1 | 1 | ✓ |
 | ↳ security 1 | 1 | ✓ |
-| ↳ code 1 | 1 | ✗ 2 Findings: Tenant-Filter fehlt |
+| ↳ code 1 | 1 | ✗ 2 Findings: Zugriffsprüfung fehlt |
 | ↳ ui 1 | 1 | ✓ |
 | ↳ builder 2 | 2 | ✓ 1 Commit |
 | ↳ Checks 2 | 2 | ✓ |
 | ↳ security 2 | 2 | 🔄 läuft |
 | ↳ code 2 | 2 | 🔄 läuft |
-| **#143+#147 Review-Filter** | 3/3 | ⚠️ #513 Draft |
+| **#143+#147 Export-Formate** | 3/3 | ⚠️ #513 Draft |
 | ↳ Runde 1 | 1 | builder ✓ · Checks ✗ · builder Checks ✓ · Checks ✓ · security ✓ · code ✗ 2 Findings |
 | ↳ Runde 2 | 2 | builder ✓ · Checks ✓ · security ✗ 1 Finding · code ✓ |
 | ↳ Runde 3 | 3 | builder ✓ · Checks ✓ · security ✓ · code ✗ 1 Finding |
@@ -426,8 +430,8 @@ Retro · 2 Jobs · 5 Befunde
 | # | Bereich | Schwere | Befund | Vorschlag | Jobs |
 | --- | --- | --- | --- | --- | --- |
 | 1 | Checks | hoch | Prettier-Fehler erst im Code-Review | prettier --check in factory.md Validate | #142, #143+#147 |
-| 2 | Navigation | mittel | Builder suchte Guards in 14 Aufrufen | Zeiger in apps/api/AGENTS.md | #142 |
-| 3 | Factory | niedrig | Security liest Billing-Doku ohne Billing | Security-Abschnitt in factory.md kürzen | #143+#147 |
+| 2 | Navigation | mittel | Builder suchte Zugriffsprüfung in 14 Aufrufen | Zeiger im AGENTS.md des Pakets | #142 |
+| 3 | Factory | niedrig | Security las Doku ohne Bezug zur Änderung | Security-Abschnitt in factory.md kürzen | #143+#147 |
 ```
 
 - One row per distinct improvement: findings of several jobs that propose the same change become one row, with every job label under `Jobs` and the highest `Schwere`. Keep the wording short; shorten a `Befund` or `Vorschlag` rather than wrap it.
@@ -461,7 +465,7 @@ Factory doctor · claude-mods 1.4.0 · ⚠️ 3 Hinweise · 9 ok
 | --- | --- |
 | Agenten | ⚠️ reviewer-code weicht von claude-mods ab (alte Kopie?) |
 | Labels | ⚠️ #148: Label factory-in-progress, kein PR, kein Branch, kein Worktree (seit 2 h 10 min) |
-| Reste | ⚠️ Worktree rating-filter-142 seit 1 h 30 min unberührt, mit Änderungen |
+| Reste | ⚠️ Worktree search-filter-142 seit 1 h 30 min unberührt, mit Änderungen |
 
 Aufgeräumt:
 - Scratch old-job-12 entfernt

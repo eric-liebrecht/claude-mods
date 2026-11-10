@@ -45,7 +45,7 @@ STATUS: READY
 
 - `Bereich` is one of: `Navigation`, `Checks`, `Standards`, `AGENTS.md`, `Factory`, `Tool-Kosten`, `No-op`, `Information`. `Factory` is a change to the factory skill, its agents or `docs/agents/factory.md`. The skill and its agents belong to claude-mods, shared by every repo: name them as `claude-mods: skills/factory/…`, not as a file of this repo; only `docs/agents/factory.md` is the repo's.
 - `Schwere` is `hoch` (cost a review round or blocked the job), `mittel` (cost many tool calls), `niedrig`.
-- At most five rows, most severe first. In German, with file names and identifiers as they are.
+- At most five rows, most severe first. `Befund` and `Vorschlag` in the config's `Language` (`de` German, `en` English), with file names and identifiers as they are. The column names and the values of `Bereich` and `Schwere` stay as above in every language: the factory reads them.
 - No finding worth a change: the single line `Keine Befunde.` under the status line.
 
 ## Report

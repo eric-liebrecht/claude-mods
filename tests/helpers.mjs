@@ -199,7 +199,7 @@ export const BASE_GH = [
 	["^label create", ""],
 ];
 
-export function issue(number, { body = "## Acceptance criteria\n\n- [ ] works\n", labels = ["ready-for-agent"], state = "OPEN", assignees = [], title = "Rating filter for reviews" } = {}) {
+export function issue(number, { body = "## Acceptance criteria\n\n- [ ] works\n", labels = ["ready-for-agent"], state = "OPEN", assignees = [], title = "Search filter for orders" } = {}) {
 	return {
 		number,
 		title,

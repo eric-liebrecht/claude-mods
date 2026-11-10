@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import {
@@ -17,6 +17,7 @@ import {
 	formatTokens,
 	globToRegExp,
 	hasCriteria,
+	hasPlaceholder,
 	headSentence,
 	isReleased,
 	isSpec,
@@ -40,20 +41,42 @@ import { ROOT, tempDir, VERSION } from "./helpers.mjs";
 
 const TEMPLATE = readFileSync(join(ROOT, "skills", "factory", "config.md"), "utf8");
 
-test("the config template has every heading the factory looks up and parses to its defaults", () => {
+test("the config template has every heading the factory looks up, placeholders where a repo fills in", () => {
 	const config = parseConfig(TEMPLATE);
-	for (const heading of REQUIRED_HEADINGS) assert.ok(config.headings.includes(heading), heading);
+	for (const heading of [...REQUIRED_HEADINGS, "Product decisions"]) assert.ok(config.headings.includes(heading), heading);
 	assert.equal(config.integration, "main");
 	assert.deepEqual(config.protected, ["main"]);
-	assert.deepEqual(config.setup, ["pnpm install --frozen-lockfile"]);
-	assert.deepEqual(config.check, ["pnpm exec prettier --check <files>", "pnpm lint && pnpm check-types && pnpm test"]);
-	assert.equal(config.validate.length, 2);
+	assert.equal(config.language, "de");
+	assert.equal(config.glossary, "CONTEXT.md");
+	assert.equal(config.decisions, "docs/adr/");
+	assert.equal(config.issueTracker, "docs/agents/issue-tracker.md");
+	for (const line of [...config.setup, ...config.validate, ...config.check]) assert.ok(hasPlaceholder(line), line);
 	for (const name of SPEC_LINES) assert.ok(config.specs.has(name), `Specs: ${name}`);
-	assert.equal(config.preview.start, "pnpm --filter web dev --port <port>");
+	assert.ok(hasPlaceholder(config.preview.start));
 	assert.equal(config.preview.url, "http://localhost:<port>/");
-	assert.deepEqual(config.preview.paths, ["apps/web/**", "packages/ui/**"]);
 	assert.equal(config.preview.timeout, 120);
 	assert.deepEqual(config.ci, { enabled: true, wait: 20, fixRounds: 1 });
+});
+
+test("the template names no project: no stack, product or domain of one repo", () => {
+	const factory = ["SKILL.md", "config.md", ...readdirSync(join(ROOT, "skills", "factory", "subagents")).map((name) => join("subagents", name))]
+		.map((file) => readFileSync(join(ROOT, "skills", "factory", file), "utf8"))
+		.join("\n");
+	for (const word of ["pnpm", "NEXT_PUBLIC", "organizationId", "Tenant-Filter", "pricing", "Bewertung", "rating", "Billing", "apps/web", "apps/api", "zod"])
+		assert.ok(!factory.includes(word), word);
+});
+
+test("placeholders: unfilled <…> but not the values the factory fills in", () => {
+	assert.equal(hasPlaceholder("<command that installs, e.g. npm ci>"), true);
+	assert.equal(hasPlaceholder("npx prettier --check <files> && git diff <base>"), false);
+	assert.equal(hasPlaceholder("npm run dev -- --port <port>"), false);
+	assert.equal(hasPlaceholder("<formatter on <files>>"), true);
+});
+
+test("the language of the repo", () => {
+	assert.equal(parseConfig("## Repository\n\n- Language: `en`\n").language, "en");
+	assert.equal(parseConfig("## Repository\n\n- Language: `EN-us`\n").language, "en");
+	assert.equal(parseConfig("## Repository\n").language, "de");
 });
 
 test("optional sections: absent or None. turn them off", () => {
@@ -84,6 +107,10 @@ test("Freigabe: only a name and a real date release a spec", () => {
 	assert.equal(isReleased(block("Freigegeben von: Erika [2026-02-30]")), false);
 	assert.equal(isReleased(block("Freigegeben von: Erika [JJJJ-MM-TT]")), false);
 	assert.equal(isReleased("Status: freigegeben (2026-10-24)\n"), true);
+	assert.equal(isReleased("## Approval\n\n- Draft: Factory, 2026-10-01\n- Approved by: Jane Doe [2026-10-24]\n"), true);
+	assert.equal(isReleased("## Approval\n\n- Approved by: Name [YYYY-MM-DD]\n"), false);
+	assert.equal(isReleased("Status: released (2026-10-24)\n"), true);
+	assert.equal(isSpec("## Approval\n"), true);
 	assert.equal(isReleased("Status: entwurf\n"), false);
 	assert.equal(isReleased(`${block("Freigegeben von: Name [JJJJ-MM-TT]")}\nStatus: freigegeben (2026-10-24)`), false);
 	assert.equal(validDate("2026-02-29"), false);
@@ -125,11 +152,11 @@ test("specs in the repo: Spec, Kriterien and status lines", () => {
 
 test("names of a job", () => {
 	assert.deepEqual(jobNumbers("review-filters-142-143-147"), [142, 143, 147]);
-	assert.deepEqual(jobNumbers("rating-filter-142"), [142]);
+	assert.deepEqual(jobNumbers("search-filter-142"), [142]);
 	assert.deepEqual(jobNumbers("typo"), []);
-	const paths = jobPaths("/w/app", "rating-filter-142", "/t");
-	assert.equal(paths.worktree, "/w/app-factory/rating-filter-142");
-	assert.match(paths.scratch, /^\/t\/factory\/app-[0-9a-f]{8}\/rating-filter-142$/);
+	const paths = jobPaths("/w/app", "search-filter-142", "/t");
+	assert.equal(paths.worktree, "/w/app-factory/search-filter-142");
+	assert.match(paths.scratch, /^\/t\/factory\/app-[0-9a-f]{8}\/search-filter-142$/);
 	assert.equal(paths.schemaLock, join(paths.root, ".schema-lock"));
 	assert.notEqual(jobPaths("/v/app", "x", "/t").root, paths.root, "two checkouts named app keep apart");
 	assert.equal(
