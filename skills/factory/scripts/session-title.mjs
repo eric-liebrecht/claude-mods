@@ -34,6 +34,7 @@ function titleFor(args, cwd) {
 	if (command === "doctor") return "Factory · doctor";
 	if (command === "next") return "Factory · next";
 	if (command === "fix") return `Factory · fix ${rest.join(" ")}`;
+	if (command === "grill") return `Factory · grill ${rest.slice(0, 4).join(" ")}`.trimEnd();
 	if (command === "rework") return `Factory · rework #${(rest[0] ?? "").replace(/^#/, "")}`;
 	const numbers = [...args.matchAll(/#?(\d+)/g)].map((match) => match[1]);
 	if (numbers.length === 0) return null;
