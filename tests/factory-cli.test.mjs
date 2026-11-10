@@ -503,3 +503,23 @@ test("close writes its comments in the repo's language", () => {
 	repo.factory("close", "512");
 	assert.ok(repo.calls().includes("issue close 142 --reason completed --comment Implemented in #512, merged into main."));
 });
+
+test("grill: the preflight without tickets, and a claim that carries the brief", () => {
+	const repo = makeRepo();
+	repo.gh(BASE_GH);
+	const preflight = repo.factory("ready").json;
+	assert.equal(preflight.ok, true);
+	assert.deepEqual(preflight.issues, []);
+	assert.equal(preflight.language, "de");
+	const root = repo.factory("names", "csv-import").json.root;
+	const draft = join(root, "csv-import.brief.md");
+	write(draft, "# Auftrag: CSV-Import\n\n## Akzeptanzkriterien\n\n1. Import geht\n");
+	const claim = repo.factory("claim", "csv-import", "--mode", "brief", "--branch", "feat/csv-import", "--brief", draft).json;
+	assert.equal(claim.claimed, true, JSON.stringify(claim));
+	assert.equal(claim.brief, join(claim.scratch, "brief.md"));
+	assert.match(readFileSync(claim.brief, "utf8"), /CSV-Import/);
+	assert.ok(!existsSync(draft), "the claim moves the brief into the scratch folder");
+	assert.match(claim.head, new RegExp(`^Job: csv-import\\. Brief: ${claim.brief.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} \\(no ticket`));
+	assert.ok(!repo.calls().some((call) => call.startsWith("issue edit")), "no ticket, no label");
+	assert.equal(repo.factory("claim", "x", "--mode", "brief", "--branch", "feat/x").code, 2, "a brief claim needs its file");
+});

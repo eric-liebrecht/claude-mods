@@ -29,6 +29,7 @@ test("names the session after the /factory command", () => {
 	assert.equal(title("/factory next 2"), "Factory · next");
 	assert.equal(title("/factory rework 512 bitte Texte"), "Factory · rework #512");
 	assert.equal(title("/factory fix typo"), "Factory · fix typo");
+	assert.equal(title("/factory grill CSV-Import für Kundenlisten mit Dubletten"), "Factory · grill CSV-Import für Kundenlisten mit");
 	assert.equal(title(`/factory fix ${"x".repeat(80)}`).length, 60);
 });
 

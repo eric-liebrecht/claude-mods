@@ -42,9 +42,9 @@ test("every factory.mjs command is used by SKILL.md or an agent", () => {
 
 test("the help names every /factory command the description triggers on", () => {
 	const help = /```text\n(\/factory:[\s\S]*?)```/.exec(FACTORY)[1];
-	for (const command of ["#<n>", "--bundle", "next", "fix", "rework", "close", "doctor", "help"]) assert.ok(help.includes(command), command);
+	for (const command of ["#<n>", "--bundle", "next", "fix", "grill", "rework", "close", "doctor", "help"]) assert.ok(help.includes(command), command);
 	const description = frontmatter(FACTORY).description;
-	for (const command of ["/factory next", "/factory fix", "/factory rework", "/factory close", "/factory doctor"]) assert.ok(description.includes(command), command);
+	for (const command of ["/factory next", "/factory fix", "/factory grill", "/factory rework", "/factory close", "/factory doctor"]) assert.ok(description.includes(command), command);
 });
 
 test("the README's pinned release is the current version", () => {

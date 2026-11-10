@@ -270,10 +270,12 @@ export function jobPaths(main, job, temp = tmpdir()) {
 }
 
 /** The sentence every agent prompt starts with (SKILL.md: Record, `<head>`). */
-export function headSentence({ job, issues = [], fix, worktree, branch, base, scratch, schemaLock, skills, agents }) {
-	const tickets = fix
-		? `Small fix: ${fix}.`
-		: `Tickets: ${issues.map((number) => `#${number}`).join(", ")} in build order.`;
+export function headSentence({ job, issues = [], fix, brief, worktree, branch, base, scratch, schemaLock, skills, agents }) {
+	const tickets = brief
+		? `Brief: ${brief} (no ticket: it holds the goal, the acceptance criteria and the decisions).`
+		: fix
+			? `Small fix: ${fix}.`
+			: `Tickets: ${issues.map((number) => `#${number}`).join(", ")} in build order.`;
 	return `Job: ${job}. ${tickets} Worktree: ${worktree}. Branch: ${branch}. Base: ${base}. Scratch: ${scratch}. Schema lock: ${schemaLock}. Skills: ${skills}. Agents: ${agents}.`;
 }
 

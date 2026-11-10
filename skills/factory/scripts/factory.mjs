@@ -4,10 +4,11 @@
 //
 //   node factory.mjs <command> [args]          from the main checkout (or any worktree of it)
 //
-//   ready <n> [<m> …]                 ready check of tickets: config, agents, gh, fetch, every condition
+//   ready [<n> …]                     ready check of tickets: config, agents, gh, fetch, every condition (none: preflight)
 //   next [--limit 30] [--bodies]      the frontier: open ready-for-agent tickets nobody has taken on, ready-checked
 //   names <job>                       worktree, scratch, schema lock, skills, agents of a job
-//   claim <job> --mode build|fix|spec|rework [--branch <b>] [--issues 1,2] [--fix "<text>"] [--skip-labeled]
+//   claim <job> --mode build|fix|brief|spec|rework [--branch <b>] [--issues 1,2] [--fix "<text>"] [--brief <file>]
+//                                     [--skip-labeled]
 //   setup <job>                       the config's ## Setup in the job's worktree, log in <scratch>/setup.log
 //   check <job> [--round N] [--base <sha>] [--section Check|Validate]
 //                                     runs the config's checks in the worktree, writes <scratch>/check.md
@@ -353,7 +354,7 @@ function preflight(ctx) {
 }
 
 function cmdReady(ctx, { positional }) {
-	if (positional.length === 0) usage("ready <n> [<m> …]");
+	// Without tickets it is the preflight alone: config, agents, gh, fetch (for /factory grill).
 	const head = preflight(ctx);
 	const issues = positional.map((arg) => readyOne(ctx, arg.replace(/^#/, "")));
 	return { ok: true, ...head, issues };
@@ -402,7 +403,7 @@ function issueLabels(ctx, number) {
 }
 
 function cmdClaim(ctx, { positional, flags }) {
-	const job = positional[0] ?? usage("claim <job> --mode build|fix|spec|rework --branch <b> --issues 1,2");
+	const job = positional[0] ?? usage("claim <job> --mode build|fix|brief|spec|rework --branch <b> --issues 1,2");
 	const config = requireConfig(ctx);
 	const mode = flags.mode ?? "build";
 	const paths = ctx.paths(job);
@@ -411,7 +412,8 @@ function cmdClaim(ctx, { positional, flags }) {
 		.filter(Boolean)
 		.map((value) => Number(value.replace(/^#/, "")));
 	const branch = flags.branch;
-	if (["build", "fix", "rework"].includes(mode) && !branch) usage("claim … --branch <type/job>");
+	if (["build", "fix", "brief", "rework"].includes(mode) && !branch) usage("claim … --branch <type/job>");
+	if (mode === "brief" && (!flags.brief || !existsSync(String(flags.brief)))) usage("claim … --mode brief --brief <file with the brief>");
 	if (branch && config.protected.includes(branch)) throw new Stop(`${branch} ist geschützt`, null);
 	mkdirSync(paths.factoryDir, { recursive: true });
 
@@ -457,14 +459,21 @@ function cmdClaim(ctx, { positional, flags }) {
 		}
 	}
 
+	const briefText = mode === "brief" ? readFileSync(String(flags.brief), "utf8") : null;
 	rmSync(paths.scratch, { recursive: true, force: true });
 	mkdirSync(mode === "spec" ? paths.scratch : join(paths.scratch, "history"), { recursive: true });
+	const brief = briefText === null ? null : join(paths.scratch, "brief.md");
+	if (brief) {
+		writeFileSync(brief, briefText);
+		if (resolve(String(flags.brief)) !== brief) rmSync(String(flags.brief), { force: true });
+	}
 	const record = {
 		job,
 		mode,
 		branch: branch ?? null,
 		issues,
 		fix: flags.fix ?? null,
+		brief,
 		base,
 		worktree: paths.worktree,
 		scratch: paths.scratch,

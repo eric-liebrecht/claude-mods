@@ -1,6 +1,6 @@
 ---
 name: factory
-description: Run the software factory. Use when the user types /factory alone or /factory help (prints the help), /factory #<issue> [#<issue> …], /factory next [k], either with --bundle, /factory fix <description>, /factory rework <pr> [note], /factory close [<pr> …] or /factory doctor [--fix], or asks to close the tickets the factory built. The session that runs it orchestrates the build → check → review loop of up to three jobs, each ending in a pull request into the integration branch whose CI it watches, or in a drafted spec when a ticket has none, and closes with a retro of every built job.
+description: Run the software factory. Use when the user types /factory alone or /factory help (prints the help), /factory #<issue> [#<issue> …], /factory next [k], either with --bundle, /factory fix <description>, /factory grill <description> (grill the user on a change without a ticket, then build it), /factory rework <pr> [note], /factory close [<pr> …] or /factory doctor [--fix], or asks to close the tickets the factory built. The session that runs it orchestrates the build → check → review loop of up to three jobs, each ending in a pull request into the integration branch whose CI it watches, or in a drafted spec when a ticket has none, and closes with a retro of every built job.
 ---
 
 # Factory
@@ -29,6 +29,7 @@ When the arguments are empty or `help`, print the block below verbatim as your w
   /factory next [k]               Die nächsten k freien Tickets (k ≤ 3, Standard 1)
   /factory next [k] --bundle      Freie Tickets nach Thema bündeln, k Bündel
   /factory fix <beschreibung>     Kleiner Fix ohne Ticket (ein Bug oder Text)
+  /factory grill <beschreibung>   Änderung ohne Ticket: erst Grilling, nach deinem OK bauen wie ein Ticket
   /factory rework <pr> [notiz]    Offenen PR nacharbeiten (Notiz, Review-Kommentare, Konflikte)
   /factory close [<pr> …]         Tickets gemergter PRs schließen, dann ihre fertigen Specs
   /factory doctor [--fix]         Installation, Config und Reste früherer Läufe prüfen (--fix räumt auf)
@@ -51,7 +52,7 @@ Die Factory mergt nie und schließt Tickets nur mit /factory close.
 
 ## Session title
 
-The session carries the name of what the factory does, so the user finds it among their sessions: `Factory · #142 Suchfilter` (job label and the issue title cut to three words, as in **Start**), `Factory · #142, #150` for several jobs, `Factory · #143+#147 Export-Formate` for a bundle, `Factory · fix <slug>`, `Factory · rework #<pr>`, `Factory · close`, `Factory · doctor`. `/factory help` keeps the name it has.
+The session carries the name of what the factory does, so the user finds it among their sessions: `Factory · #142 Suchfilter` (job label and the issue title cut to three words, as in **Start**), `Factory · #142, #150` for several jobs, `Factory · #143+#147 Export-Formate` for a bundle, `Factory · fix <slug>`, `Factory · grill <first words>`, `Factory · rework #<pr>`, `Factory · close`, `Factory · doctor`. `/factory help` keeps the name it has.
 
 - In a local session the hook `scripts/session-title.mjs` sets it from the `/factory` prompt before you start (`UserPromptSubmit`, `sessionTitle`); `install.mjs` of claude-mods registers it once in the user's `~/.claude/settings.json`, a project-local install in the repo's `.claude/settings.json` (README of claude-mods).
 - When a tool that sets the session title is available, call it right after **Start** with the title of the jobs that started, also for `/factory next`, whose tickets the hook cannot know. In a cloud session that is `set_session_title` of the `claude-code-remote` server (load it with ToolSearch when it is deferred), with the id `get_session` without arguments returns.
@@ -98,7 +99,7 @@ The agents live in `<agents>` (**Names**); their source is `<skills>/factory/sub
 - **Repo**: `<owner>/<name>`, `repo` in the JSON of `factory.mjs ready` or `claim`.
 - **Integration branch** (`<integration>`): the config's `Integration branch`. **Protected branches**: the config's list, plus the integration branch and the default branch.
 - **Spec job**: `spec-<n>[-<m> …]`, the numbers of the tickets without a spec, ascending (`spec-142-143`). It drafts a spec and builds nothing: no branch, a detached worktree, the scratch folder. With **Specs in the repo**, **Publish** puts the spec on the branch `spec/<spec>`, `<spec>` being the spec's folder name.
-- **Job**: `<slug>-<n>`, a 2 to 4 word kebab-case English slug of the issue title plus the issue number (`search-filter-142`). A bundle: a slug of what its tickets share plus every number, ascending (`export-formats-142-143-147`). For `/factory fix` without an issue: `<slug>` alone.
+- **Job**: `<slug>-<n>`, a 2 to 4 word kebab-case English slug of the issue title plus the issue number (`search-filter-142`). A bundle: a slug of what its tickets share plus every number, ascending (`export-formats-142-143-147`). For `/factory fix` and `/factory grill` without an issue: `<slug>` alone.
 - **Branch**: `<type>/<job>`. `type` is `fix` when every ticket describes a bug, otherwise `feat`.
 - **Worktree**, **Scratch**, **Schema lock**: `factory.mjs names <job>` prints them, and **Claim** returns them. The worktree is `<main>/../<name>-factory/<job>`, `<main>` the main checkout, `<name>` its directory name. Your session stays in the main checkout and only runs `git fetch`, `git worktree`, `git branch`, `gh` and `factory.mjs` there: it belongs to the user. The scratch folder is `<temp>/factory/<name>-<hash>/<job>/` in the system's temp folder, `<hash>` a short hash of the main checkout's path; agents pass notes through it, nothing in it is kept. The schema lock is `<temp>/factory/<name>-<hash>/.schema-lock/`: all jobs of this repo on this machine share one dev database, so only one job at a time applies a migration. The builder takes it with `mkdir`; it holds the job name in `owner`.
 - **Base**: the `origin/<integration>` commit the branch sits on: `base` of **Claim**, the rebase target after a **Sync**. Agents diff against it, so a moving integration branch never changes what they review.
@@ -208,6 +209,47 @@ Spec-Entwurf der Factory für #<n>[, #<m> …]. Gebaut wird nach Freigabe und Me
 
 For a small fix without a ticket: one bug or one copy change, no new screen, no new schema model or migration, no new dependency. If the description is more than that, stop with `⛔ zu groß für fix` and `Du musst: /to-spec`. Otherwise run **/factory #<issue>** from step 2 with `factory.mjs claim <slug> --mode fix --branch fix/<slug> --fix "<description>"`: no label and no assignee (there is no ticket), and its `head` says `Small fix: <description>`.
 
+## /factory grill <description>
+
+A change without a ticket, of any size one PR can hold: you grill the user on it in this session, write what you agreed as a **brief**, and once the user says it is right, build it with the loop of **/factory #<issue>**. The brief stands in for the ticket and its spec: the agents build, check and review against it.
+
+1. **Preflight.** `factory.mjs ready` without tickets: config, agents, `gh`, fetch. `ok: false`: stop as there. Read the config's `## Product decisions` and `## Standards`: the glossary and decision records are what you grill with.
+2. **Grill.** Run the `grilling` skill (as `grill-me` does) on the description, in this session: rounds of questions with `AskUserQuestion` until its frontier is empty. Facts you look up yourself, with a background `Explore` agent where the code must be searched; decisions are the user's. Every item of `## Product decisions` the change touches is a decision the user makes here, never one you assume. While you grill, your messages are the grilling skill's rounds, not the blocks of **Output**.
+3. **Size.** When the tree shows more than one PR's worth (independent parts a reviewer would want apart, or a part that needs its own design), say so in the next round and offer to build the first part now and leave the rest, or to stop for `/to-spec` and `/to-tickets`.
+4. **Brief.** Write the brief (below) from the decisions, and show it to the user verbatim. Then ask with `AskUserQuestion`, `Passt der Auftrag so?`: `Bauen (Recommended)`, `Ändern` (what to change, then back to step 2 on it), `Als Spec + Tickets` (stop; the user runs `/to-spec` with the brief), `Abbrechen`. Only `Bauen` goes on. The answer is the Freigabe of the brief.
+5. **Claim.** Save the brief as `<root>/<slug>.brief.md` (`root` of `factory.mjs names <slug>`), then `factory.mjs claim <slug> --mode brief --branch <type>/<slug> --brief <that file>`, `type` `fix` when the brief describes a bug, otherwise `feat`. The claim moves the brief to `<scratch>/brief.md`, and its `head` names it. No label and no assignee: there is no ticket. Then **Start** and **/factory #<issue>** from step 3 (**Setup**).
+6. The PR body gets the brief (**Open PR** step 6), and has no `Closes` line.
+
+The brief, in the config's language:
+
+```markdown
+# Auftrag: <title, at most eight words>
+
+Freigegeben von <the user> im Grilling, <YYYY-MM-DD>.
+
+## Ziel
+
+<what changes for whom and why, two to four sentences>
+
+## Akzeptanzkriterien
+
+1. <an observable result, testable at a seam the code has>
+
+## Entscheidungen
+
+1. <decision>: <what the user chose, and the reason when they gave one>
+
+## Nicht-Ziele
+
+- <what the grilling left out on purpose>
+
+## Hinweise
+
+<the files, seams and existing tests the grilling found; "Keine." when there are none>
+```
+
+With `en`: `# Brief:`, `Approved by <the user> in grilling, <date>.`, `## Goal`, `## Acceptance criteria`, `## Decisions`, `## Out of scope`, `## Notes`. Every criterion and every decision comes from the grilling; nothing the user did not say or confirm.
+
 ## Build check
 
 The first line of the builder's final report is `STATUS: READY` or `STATUS: BLOCKED`.
@@ -242,7 +284,7 @@ The first line of the builder's final report is `STATUS: READY` or `STATUS: BLOC
     - the blocker, the red checks or the exhausted rounds that sent you here.
 4. **PR text.** `<scratch>/pr.md` follows the `pr` skill: line 1 is `TITLE: <conventional commit title>`, line 2 is blank, and the body from line 3 has the headings `## Summary`, `## Evidence` and `## Merge Danger`. When one is missing, resume the builder with `pr.md does not follow the pr skill template: <what is missing>. Rewrite pr.md.` and check again; still missing, stop with `⛔ PR-Text ohne pr-Template`, leaving the worktree. Every PR the factory opens or edits takes its body from this file.
 5. Push the branch as **Linear history** says, never any other branch.
-6. Write the body to `<scratch>/pr-body.md`: `tail -n +3 <scratch>/pr.md`, then, when the Needs human list is not empty, a `## Needs human` section with it, and last the line `Gebaut mit claude-mods <version> (/factory).` (`Built with …`) when the version is known. With Needs human the PR is a draft.
+6. Write the body to `<scratch>/pr-body.md`: `tail -n +3 <scratch>/pr.md`, then, when the Needs human list is not empty, a `## Needs human` section with it, then for a **/factory grill** job the brief inside `<details><summary>Auftrag</summary>` … `</details>` (`Brief` with `en`), and last the line `Gebaut mit claude-mods <version> (/factory).` (`Built with …`) when the version is known. With Needs human the PR is a draft.
     - New PR: `gh pr create --base <integration> --head <branch> --title "<title>" --body-file <scratch>/pr-body.md [--draft]`.
     - Rework: the push updated the PR; `gh pr edit <pr> --body-file <scratch>/pr-body.md`, and `gh pr ready <pr> --undo` when it now needs a human.
 7. If push or PR creation fails, stop with `⛔ Push fehlgeschlagen` or `⛔ PR-Erstellung fehlgeschlagen` and the output under `Fehler <job>:`, leaving the worktree. Otherwise go to **Watch CI**.
@@ -330,11 +372,11 @@ With `--fix` it removes the leftovers that are safe to remove (a clean worktree 
 
 ## Output
 
-Every message to the user is one of the blocks below, filled in, in the factory's language (**Language**), with nothing before or after it: no intro, no recap of what you did, no explanation, no tool narration, no closing remark. Only two exceptions: `/factory help` prints its own block, and a direct question from the user gets at most two sentences, followed by **Status** when jobs exist. Where the steps above say "stop", "say so" or "report", that means the block named there. Spell PRs and issues as links, `[#512](<url>)`.
+Every message to the user is one of the blocks below, filled in, in the factory's language (**Language**), with nothing before or after it: no intro, no recap of what you did, no explanation, no tool narration, no closing remark. Only three exceptions: `/factory help` prints its own block, the rounds and the brief of **/factory grill** follow that section, and a direct question from the user gets at most two sentences, followed by **Status** when jobs exist. Where the steps above say "stop", "say so" or "report", that means the block named there. Spell PRs and issues as links, `[#512](<url>)`.
 
 Fixed words, nothing else in their place:
 
-- **Job label**: its ticket numbers, `#142`, a bundle `#143+#147`; a small fix without a ticket: `fix <slug>`.
+- **Job label**: its ticket numbers, `#142`, a bundle `#143+#147`; a small fix without a ticket: `fix <slug>`; a **/factory grill** job: `grill <slug>`.
 - **Agent**: `builder`, `security`, `code`, `ui`, `spec-writer`, each with its round: `builder 2`, `security 1`. A rework builder counts from 1 again; a rebase is `builder <n> Rebase`, a fix after red checks `builder <n> Checks`, after a red CI `builder <n> CI`. The retro is `retro`, without a round. Steps without an agent: `Checks <n>` (the gate of round `<n>`), `CI`.
 - **Agent result**: `✓` (READY, PASS, green), `✓ <k> Commits` for a builder, `✓ Entwurf` for the spec writer, `✓ <k> Befunde` for the retro (`✓ 1 Befund`, `✓ keine Befunde`), `✗ <k> Findings: <main finding>` (CHANGES), singular for one (`✓ 1 Commit`, `✗ 1 Finding: …`), `✗ <command>` for a red gate, `✗ <check>` for a red CI, `⛔ <reason>` (BLOCKED, failure), `🔄 läuft` (spawned or waiting, not finished).
 - **Job result**: `🔄` (running), `✅ #<pr>` (PR ready, CI green), `⚠️ #<pr> Draft` (PR needs a human), `📝 Spec #<n>` (spec drafted: its issue, or its PR with **Specs in the repo**), `⛔ <reason>` (no PR).
@@ -345,11 +387,12 @@ Fixed words, nothing else in their place:
 Once, after the ready check and the claims, before the first agent is spawned. A heading with the number of jobs and the version, one line per job, then one line per ticket you did not start:
 
 ```text
-Factory · 3 Jobs · claude-mods 1.4.0
+Factory · 4 Jobs · claude-mods 1.4.0
 - #142 Suchfilter
 - #143+#147 Export-Formate · Bündel: gleiche Spec #120
 - #150 CSV-Export · ohne Spec → spec-writer
 - #151 nicht gestartet: Blocker #149 offen
+- grill csv-import · Auftrag aus dem Grilling
 ```
 
 The title after the label is the issue title cut to at most three words. Without a known version the heading ends after `Jobs`. Skip **Start** when no job starts; then **Status** says why.
