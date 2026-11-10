@@ -366,7 +366,8 @@ test("doctor reports a broken config and duplicate installs", () => {
 	assert.ok(messages.some((line) => /^error Abschnitte fehlen: Setup, Validate, Schema/.test(line)), messages.join("\n"));
 	assert.ok(messages.includes("error Integrationsbranch develop fehlt auf origin"));
 	assert.ok(messages.includes("error ## Check schreibt Dateien (--write/--fix)"));
-	assert.ok(messages.some((line) => line.includes("nicht gefunden: no-such-tool-xyz")));
+	// Other tools may be missing too (prettier on a bare CI runner): the unknown one must be among them.
+	assert.ok(messages.some((line) => /nicht gefunden: .*no-such-tool-xyz/.test(line)), messages.join("\n"));
 	assert.ok(messages.some((line) => line.startsWith("warn Doppelt installiert")));
 });
 
