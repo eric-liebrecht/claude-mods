@@ -51,7 +51,7 @@ It honours `CLAUDE_CONFIG_DIR`. Then per repo: copy [skills/factory/config.md](.
 
 **Update:** `git -C ~/.claude-mods pull` (after `--copy` also `node ~/.claude-mods/install.mjs` again), then restart the sessions. **Pin** a machine to a release with `git -C ~/.claude-mods checkout v1.3.0`; back to the newest with `git -C ~/.claude-mods checkout main && git -C ~/.claude-mods pull`.
 
-**Don't install the same skills twice.** A skill in `~/.claude/skills/` wins over the project's `.claude/skills/` of the same name, but an agent in the project's `.claude/agents/` wins over the user's, so an old project-local copy mixes versions. Remove the project's copies of these skills and agents (and the project's session-title hook) when you switch; the [Platform Cookbook](https://github.com/eric-liebrecht/platform-cookbook) does it in `platform-cookbook skills`. Don't install the same names from `mattpocock/skills` either.
+**Don't install the same skills twice.** A skill in `~/.claude/skills/` wins over the project's `.claude/skills/` of the same name, but an agent in the project's `.claude/agents/` wins over the user's, so an old project-local copy mixes versions. Remove the project's copies of these skills and agents (and the project's session-title hook) when you switch: delete them from `<repo>/.claude/skills/` and `<repo>/.claude/agents/`, drop the hook from the project's `.claude/settings.json` and commit. Don't install the same names from `mattpocock/skills` either.
 
 ### Cloud sessions
 
