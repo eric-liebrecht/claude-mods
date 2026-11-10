@@ -10,8 +10,11 @@
 // On Windows agents are always copied (a file symlink needs admin rights) and skills are directory junctions.
 // `--uninstall` removes what this script installed. `--force` replaces a skill or agent of the same name that this
 // script did not install. `--dry-run` prints what would happen. Honours CLAUDE_CONFIG_DIR like Claude Code does.
+// Copies carry the version (`claude-mods <version>` in their marker), so `factory.mjs version` can name it.
+// `--clean-project <repo>` removes a repo's old project-local copies of these skills and agents and its
+// session-title hook, so they no longer shadow the user install; commit the change in that repo afterwards.
 //
-//   node install.mjs [--copy] [--force] [--dry-run] [--uninstall]
+//   node install.mjs [--copy] [--force] [--dry-run] [--uninstall] [--clean-project <repo>]
 import {
 	cpSync,
 	existsSync,
@@ -29,10 +32,22 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const args = new Set(process.argv.slice(2));
-for (const arg of args) {
-	if (!["--copy", "--force", "--dry-run", "--uninstall"].includes(arg)) {
-		console.error(`unknown option ${arg}\nusage: node install.mjs [--copy] [--force] [--dry-run] [--uninstall]`);
+const USAGE = "usage: node install.mjs [--copy] [--force] [--dry-run] [--uninstall] [--clean-project <repo>]";
+const argv = process.argv.slice(2);
+const args = new Set();
+let cleanProject = null;
+for (let index = 0; index < argv.length; index += 1) {
+	const arg = argv[index];
+	if (arg === "--clean-project") {
+		cleanProject = argv[index + 1];
+		index += 1;
+		if (!cleanProject || cleanProject.startsWith("--")) {
+			console.error(`--clean-project needs the repo's path\n${USAGE}`);
+			process.exit(2);
+		}
+	} else if (["--copy", "--force", "--dry-run", "--uninstall"].includes(arg)) args.add(arg);
+	else {
+		console.error(`unknown option ${arg}\n${USAGE}`);
 		process.exit(2);
 	}
 }
@@ -51,6 +66,7 @@ const settingsFile = join(config, "settings.json");
 /** Written into every copy, so a later run knows the copy is its own and may replace or remove it. */
 const MARKER = ".claude-mods";
 const HOOK_SCRIPT = "factory/scripts/session-title.mjs";
+const version = JSON.parse(readFileSync(join(repo, "package.json"), "utf8")).version;
 
 const skills = readdirSync(source, { withFileTypes: true })
 	.filter((entry) => entry.isDirectory() && existsSync(join(source, entry.name, "SKILL.md")))
@@ -84,7 +100,7 @@ function ours(target, from) {
 		}
 	}
 	if (lstatSync(target).isDirectory()) return existsSync(join(target, MARKER));
-	return readFileSync(target, "utf8").includes(`<!-- ${MARKER} -->`);
+	return readFileSync(target, "utf8").includes(`<!-- ${MARKER}`);
 }
 
 function remove(target) {
@@ -108,10 +124,10 @@ function place(from, target, file) {
 		symlinkSync(from, target, file ? "file" : "junction");
 	} else if (file) {
 		const text = readFileSync(from, "utf8");
-		writeFileSync(target, `${text.trimEnd()}\n\n<!-- ${MARKER} -->\n`);
+		writeFileSync(target, `${text.trimEnd()}\n\n<!-- ${MARKER} ${version} -->\n`);
 	} else {
 		cpSync(from, target, { recursive: true });
-		writeFileSync(join(target, MARKER), `Copied from ${repo} by install.mjs; run it again to update.\n`);
+		writeFileSync(join(target, MARKER), `claude-mods ${version}, copied from ${repo} by install.mjs; run it again to update.\n`);
 	}
 	return true;
 }
@@ -134,9 +150,47 @@ function withoutHook(settings) {
 	return settings;
 }
 
-function writeSettings(settings) {
-	log(`update ${settingsFile}`);
-	if (!dryRun) writeFileSync(settingsFile, `${JSON.stringify(settings, null, "\t")}\n`);
+function writeSettings(settings, file = settingsFile) {
+	log(`update ${file}`);
+	if (!dryRun) writeFileSync(file, `${JSON.stringify(settings, null, "\t")}\n`);
+}
+
+if (cleanProject) {
+	const project = resolve(cleanProject);
+	if (!existsSync(project)) {
+		console.error(`${project} does not exist`);
+		process.exit(2);
+	}
+	let removed = 0;
+	for (const skill of skills) {
+		const target = join(project, ".claude", "skills", skill);
+		if (!exists(target)) continue;
+		log(`remove ${target}`);
+		remove(target);
+		removed += 1;
+	}
+	for (const agent of agents) {
+		const target = join(project, ".claude", "agents", agent);
+		if (!exists(target)) continue;
+		log(`remove ${target}`);
+		remove(target);
+		removed += 1;
+	}
+	const projectSettings = join(project, ".claude", "settings.json");
+	if (existsSync(projectSettings)) {
+		const before = readFileSync(projectSettings, "utf8");
+		const after = withoutHook(JSON.parse(before));
+		if (JSON.stringify(after) !== JSON.stringify(JSON.parse(before))) {
+			writeSettings(after, projectSettings);
+			removed += 1;
+		}
+	}
+	log(
+		removed === 0
+			? `nothing of claude-mods in ${project}.`
+			: `removed ${removed} project-local copies from ${project}: commit the change there, then restart its sessions.`,
+	);
+	process.exit(0);
 }
 
 if (uninstall) {
@@ -178,7 +232,6 @@ settings.hooks ??= {};
 (settings.hooks.UserPromptSubmit ??= []).push({ hooks: [{ type: "command", command: `node "${script}"` }] });
 writeSettings(settings);
 
-const version = JSON.parse(readFileSync(join(repo, "package.json"), "utf8")).version;
 log(`claude-mods ${version}: ${skills.length} skills, ${agents.length} agents in ${config}${copy ? " (copies)" : ""}.`);
 if (failed.length > 0) {
 	console.warn(`not installed: ${failed.join(", ")}`);

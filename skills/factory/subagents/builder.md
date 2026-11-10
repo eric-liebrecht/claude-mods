@@ -37,6 +37,7 @@ The worktree is a checkout of the job branch outside the main checkout you start
 4. The doc that owns each file **before** you edit it, as the config's `## Docs` says.
 5. When resumed after a review round: every `review-*.md` in the scratch folder. Address each finding in a `VERDICT: CHANGES` file. Notes in `VERDICT: PASS` files are optional.
 6. When started for a rework: `<scratch>/rework.md` and `git log --oneline <base>..HEAD`, so you know what is there.
+7. When resumed because the factory's checks failed (`<scratch>/check.md`) or the PR's CI failed (`<scratch>/ci.md`): that file. Its output names the failing command; reproduce it in the worktree, fix it at its cause, run **Validate** again.
 
 ## Specs in the repo
 
@@ -65,7 +66,9 @@ Run the commands of the config's `## Validate` in the worktree, with `<files>` t
 
 A failure is fixed at its cause (tooling problems in the tooling), with production code and checks left intact.
 
-Agents don't start dev servers by default. If the ticket changes a screen, say in the report that it was not checked in a browser.
+`node <skills>/factory/scripts/factory.mjs check <job> --section Validate` runs them for you with `<files>` and `<base>` filled in and writes the result to `<scratch>/validate.md`.
+
+Agents don't start dev servers by default. With a `## Preview` in the config, the factory's UI reviewer looks at the changed screens; to look at one yourself, `node <skills>/factory/scripts/factory.mjs preview start <job>` prints its URL and `… preview stop <job>` ends it. Without `## Preview`, say in the report that a changed screen was not checked in a browser.
 
 ## Commit
 
