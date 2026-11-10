@@ -35,6 +35,7 @@ import {
 } from "node:fs";
 import { createRequire } from "node:module";
 import { createServer } from "node:net";
+import { randomBytes } from "node:crypto";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -98,6 +99,13 @@ function run(command, args, options = {}) {
 }
 
 const git = (cwd, ...args) => run("git", args, { cwd });
+
+/** Changed paths between two revisions, unquoted (Umlauts, spaces): `git diff --name-only -z`. */
+function changedFiles(cwd, range) {
+	const result = run("git", ["-c", "core.quotePath=false", "diff", "--name-only", "-z", range], { cwd });
+	if (result.code !== 0) throw new Stop("git diff fehlgeschlagen", null, tail(result.stderr, 5));
+	return result.stdout.split("\0").filter(Boolean);
+}
 const gh = (cwd, ...args) => run("gh", args, { cwd });
 
 class Stop extends Error {
@@ -188,8 +196,9 @@ function versionInfo(ctx) {
 }
 
 function requireAgents(ctx, info) {
-	const missing = info.drift.filter((agent) => agent.state === "missing").map((agent) => agent.name);
-	if (missing.includes("builder") || missing.includes("retro") || info.drift.length === 0)
+	// Every agent is needed before a ticket is claimed; only the UI review can be skipped.
+	const missing = info.drift.filter((agent) => agent.state === "missing" && agent.name !== "reviewer-ui");
+	if (missing.length > 0 || info.drift.length === 0)
 		throw new Stop(
 			"Factory-Agenten fehlen",
 			"node install.mjs in claude-mods ausführen (oder <skills>/factory/subagents/*.md nach .claude/agents/ kopieren), Session neu starten",
@@ -311,7 +320,7 @@ function readyOne(ctx, number, issue) {
 		draftSpec,
 		failures: draftSpec ? [] : failures,
 		spec,
-		blockers: blockers.filter((blocker) => blocker !== "?"),
+		blockers,
 		labels,
 		id: meta.id,
 	};
@@ -331,6 +340,8 @@ function preflight(ctx) {
 		base,
 		me: ctx.me(),
 		specsInRepo: config.specs !== null,
+		ci: config.ci,
+		preview: config.preview,
 		skills: ctx.skills,
 		agents: ctx.agents,
 		warnings: info.drift
@@ -459,13 +470,20 @@ function cmdClaim(ctx, { positional, flags }) {
 		heads: {},
 		version: factoryVersion(FACTORY).version,
 		claimedAt: new Date().toISOString(),
+		owner: randomBytes(6).toString("hex"),
 	};
 	writeJob(paths.scratch, record);
 	const head =
 		mode === "spec"
 			? `Job: ${job}. Tickets: ${issues.map((number) => `#${number}`).join(", ")}. Worktree: ${paths.worktree}. Scratch: ${paths.scratch}. Skills: ${ctx.skills}.`
 			: headSentence({ ...record, fix: record.fix, skills: ctx.skills, agents: ctx.agents });
-	return { ok: true, claimed: true, ...record, dropped, warnings, head };
+	let repo = null;
+	try {
+		repo = ctx.repo();
+	} catch {
+		// only needed for gh api calls; the claim stands without it
+	}
+	return { ok: true, claimed: true, ...record, repo, ci: config.ci, preview: config.preview, dropped, warnings, head };
 }
 
 function stopPreview(scratch) {
@@ -487,9 +505,12 @@ function stopPreview(scratch) {
 }
 
 function cmdCleanup(ctx, { positional, flags }) {
-	const job = positional[0] ?? usage("cleanup <job> [--branch <b>]");
+	const job = positional[0] ?? usage("cleanup <job> --owner <token> [--branch <b>] | cleanup <job> --force");
 	const paths = ctx.paths(job);
 	const record = readJob(paths.scratch);
+	// The job must be this session's: a failed claim must never remove the worktree of the session that runs it.
+	if (!flags.force && (!record || record.owner !== flags.owner))
+		throw new Stop("Job gehört einer anderen Session", `${paths.worktree} prüfen; nur wenn dort nichts mehr läuft: factory.mjs cleanup ${job} --force`);
 	const branch = flags.branch ?? record?.branch ?? null;
 	const protectedBranches = ctx.config?.protected ?? ["main", "master"];
 	const removed = [];
@@ -554,9 +575,7 @@ function cmdCheck(ctx, { positional, flags }) {
 	if (flags.base && flags.base !== record.base) record.base = flags.base;
 	const base = record.base ?? must(git(paths.worktree, "merge-base", `origin/${config.integration}`, "HEAD"), "merge-base fehlgeschlagen");
 	const head = must(git(paths.worktree, "rev-parse", "HEAD"), "rev-parse fehlgeschlagen");
-	const changed = must(git(paths.worktree, "diff", "--name-only", `${base}...HEAD`), "git diff fehlgeschlagen")
-		.split("\n")
-		.filter(Boolean);
+	const changed = changedFiles(paths.worktree, `${base}...HEAD`);
 	const files = changed.filter((file) => existsSync(join(paths.worktree, file)));
 	const round = flags.round ? Number(flags.round) : null;
 	let prev = null;
@@ -565,9 +584,7 @@ function cmdCheck(ctx, { positional, flags }) {
 		if (candidate && candidate !== head && git(paths.worktree, "merge-base", "--is-ancestor", candidate, head).code === 0)
 			prev = candidate;
 	}
-	const deltaFiles = prev
-		? must(git(paths.worktree, "diff", "--name-only", `${prev}..HEAD`), "git diff fehlgeschlagen").split("\n").filter(Boolean)
-		: changed;
+	const deltaFiles = prev ? changedFiles(paths.worktree, `${prev}..HEAD`) : changed;
 
 	const results = [];
 	if (section === "Check") {
@@ -594,7 +611,10 @@ function cmdCheck(ctx, { positional, flags }) {
 		});
 	}
 	const pass = results.every((result) => result.pass);
-	const ui = Boolean(config.preview) && matchesAny(deltaFiles, config.preview?.paths ?? []);
+	// A UI review that asked for changes runs again until it passes, whatever the delta touches.
+	const lastUi = join(paths.scratch, "review-ui.md");
+	const uiOpen = Boolean(prev) && existsSync(lastUi) && readFileSync(lastUi, "utf8").startsWith("VERDICT: CHANGES");
+	const ui = Boolean(config.preview) && (uiOpen || matchesAny(deltaFiles, config.preview?.paths ?? []));
 
 	const lines = [`CHECK: ${pass ? "PASS" : "FAIL"}`, "", `HEAD: ${head}`, `Base: ${base}`, ""];
 	if (round) lines.splice(3, 0, `Round: ${round}`);
@@ -640,7 +660,7 @@ function readChecks(ctx, pr) {
 }
 
 async function cmdCi(ctx, { positional, flags }) {
-	const pr = positional[0] ?? usage("ci <pr> [--wait 540] [--logs <file>]");
+	const pr = positional[0] ?? usage("ci <pr> [--sha <head>] [--wait 540] [--logs <file>]");
 	const wait = Number(flags.wait ?? 540) * 1000;
 	const interval = Number(flags.interval ?? 20) * 1000;
 	const grace = Number(flags.grace ?? 90) * 1000;
@@ -648,9 +668,12 @@ async function cmdCi(ctx, { positional, flags }) {
 	let checks = [];
 	let state = "pending";
 	for (;;) {
-		checks = readChecks(ctx, pr);
 		const elapsed = Date.now() - started;
-		if (checks.length === 0) state = elapsed < grace ? "pending" : "none";
+		// Right after a push the PR may still show the checks of the commit before: wait until it names this head.
+		const headSeen = !flags.sha || gh(ctx.main, "pr", "view", String(pr), "--json", "headRefOid", "--jq", ".headRefOid").stdout.trim() === flags.sha;
+		checks = headSeen ? readChecks(ctx, pr) : [];
+		if (!headSeen) state = "pending";
+		else if (checks.length === 0) state = elapsed < grace ? "pending" : "none";
 		else if (checks.some((check) => check.bucket === "pending")) state = "pending";
 		else if (checks.some((check) => check.bucket === "fail" || check.bucket === "cancel")) state = "fail";
 		else state = "pass";
@@ -747,23 +770,46 @@ async function cmdPreview(ctx, { positional }) {
 	return { ok: false, job, stop: { reason, mustDo: null }, error: tail(readFileSync(logFile, "utf8"), 20), log: logFile };
 }
 
+/** Playwright from the worktree, its packages (workspaces), the main checkout, NODE_PATH or the global npm root. */
 function loadPlaywright(worktree) {
-	const bases = [worktree && join(worktree, "package.json"), join(process.cwd(), "package.json"), import.meta.url].filter(Boolean);
+	const dirs = [];
+	for (const root of [worktree, process.cwd()].filter(Boolean)) {
+		dirs.push(root);
+		for (const level1 of safeList(root)) {
+			dirs.push(join(root, level1));
+			for (const level2 of safeList(join(root, level1))) dirs.push(join(root, level1, level2));
+		}
+	}
+	const global = run("npm", ["root", "-g"]).stdout.trim();
+	if (global) dirs.push(global);
+	const bases = [...dirs.filter((dir) => existsSync(join(dir, "package.json")) || dir === global).map((dir) => join(dir, "noop.js")), fileURLToPath(import.meta.url)];
 	for (const base of bases) {
-		try {
-			return createRequire(base)("playwright");
-		} catch {
-			// next place
+		for (const name of ["playwright", "@playwright/test"]) {
+			try {
+				return createRequire(base)(name);
+			} catch {
+				// next place
+			}
 		}
 	}
 	return null;
+}
+
+function safeList(dir) {
+	try {
+		return readdirSync(dir, { withFileTypes: true })
+			.filter((entry) => entry.isDirectory() && !entry.name.startsWith(".") && entry.name !== "node_modules")
+			.map((entry) => entry.name);
+	} catch {
+		return [];
+	}
 }
 
 async function cmdScreenshot(ctx, { positional, flags }) {
 	const [url, file] = positional;
 	if (!url || !file) usage("screenshot <url> <out.png> [--mobile] [--worktree <dir>]");
 	const playwright = loadPlaywright(flags.worktree);
-	if (!playwright) throw new Stop("Playwright fehlt", "Playwright im Repo oder global installieren (npm i -D playwright)");
+	if (!playwright) throw new Stop("Playwright fehlt", "Playwright im Repo installieren (npm i -D playwright, dann npx playwright install chromium)");
 	const browser = await playwright.chromium.launch();
 	try {
 		const page = await browser.newPage({
@@ -804,7 +850,7 @@ async function cmdScreenshot(ctx, { positional, flags }) {
 function jobStats(ctx, job) {
 	const paths = ctx.paths(job);
 	const file = join(paths.scratch, "agents.md");
-	if (!existsSync(file)) return { job, agents: [], total: null };
+	if (!existsSync(file)) return { job, agents: [], total: null, line: "keine Agenten aufgezeichnet" };
 	const projects = join(configDir(), "projects");
 	const runs = new Map();
 	for (const line of readFileSync(file, "utf8").split(/\r?\n/)) {
@@ -879,16 +925,11 @@ function cmdClose(ctx, { positional }) {
 		]).filter((pr) => /^(feat|fix)\//.test(pr.headRefName) && closesLines(pr.body).length > 0);
 	}
 
-	let openIssues = null;
-	const openWithBodies = () =>
-		(openIssues ??= ghJson(ctx.main, ["issue", "list", "--state", "open", "--limit", "200", "--json", "number,body"]));
-	const specsDone = new Map();
+	// Pass 1: close every ticket of every PR, so no spec is judged while one of its tickets is still to close.
+	const done = [];
 	for (const pr of prs) {
-		const tickets = closesLines(pr.body);
-		const closed = [];
-		let changed = false;
-		const specTexts = [];
-		for (const number of tickets) {
+		const entry = { pr, closed: [], changed: false, specs: [] };
+		for (const number of closesLines(pr.body)) {
 			const issue = ghJson(ctx.main, ["issue", "view", String(number), "--json", "state,labels,body"]);
 			if (issue.state === "OPEN") {
 				const result = gh(
@@ -902,24 +943,32 @@ function cmdClose(ctx, { positional }) {
 					`Umgesetzt in #${pr.number}, gemergt in ${config.integration}.`,
 				);
 				if (result.code === 0) {
-					closed.push(number);
-					changed = true;
+					entry.closed.push(number);
+					entry.changed = true;
 				}
 			}
 			if ((issue.labels ?? []).some((label) => label.name === LABEL)) {
 				gh(ctx.main, "issue", "edit", String(number), "--remove-label", LABEL);
-				changed = true;
+				entry.changed = true;
 			}
 			const key = config.specs ? specLine(issue.body ?? "") : parentOfClosed(ctx, repo, number, issue.body ?? "");
-			if (!key) continue;
-			if (!specsDone.has(key)) {
-				openIssues = null;
-				specsDone.set(key, config.specs ? closeFileSpec(ctx, config, key) : closeIssueSpec(ctx, repo, key, openWithBodies));
-				if (specsDone.get(key).changed) changed = true;
-			}
-			specTexts.push(specsDone.get(key).text);
+			if (key && !entry.specs.includes(key)) entry.specs.push(key);
 		}
-		if (named || changed) rows.push({ pr: pr.number, url: pr.url, closed, spec: [...new Set(specTexts)].join("; ") || "–" });
+		done.push(entry);
+	}
+
+	// Pass 2: every spec once, after all its tickets of this run are closed.
+	let openIssues = null;
+	const openWithBodies = () =>
+		(openIssues ??= ghJson(ctx.main, ["issue", "list", "--state", "open", "--limit", "200", "--json", "number,body"]));
+	const specs = new Map();
+	for (const key of new Set(done.flatMap((entry) => entry.specs))) {
+		specs.set(key, config.specs ? closeFileSpec(ctx, config, key) : closeIssueSpec(ctx, repo, key, openWithBodies));
+	}
+	for (const entry of done) {
+		const changed = entry.changed || entry.specs.some((key) => specs.get(key).changed);
+		const spec = entry.specs.map((key) => specs.get(key).text).join("; ") || "–";
+		if (named || changed) rows.push({ pr: entry.pr.number, url: entry.pr.url, closed: entry.closed, spec });
 	}
 	return { ok: true, rows, nothing: rows.length === 0 };
 }
@@ -961,9 +1010,11 @@ function closeIssueSpec(ctx, repo, spec, openWithBodies) {
 
 function closeFileSpec(ctx, config, path) {
 	const spec = basename(dirname(path));
+	// The search index lags behind: a ticket closed a moment ago may still be listed as open, so ask each one.
 	const open = ghJson(ctx.main, ["issue", "list", "--state", "open", "--search", `"${path}" in:body`, "--limit", "200", "--json", "number,body"])
 		.filter((issue) => specLine(issue.body ?? "") === path)
-		.map((issue) => issue.number);
+		.map((issue) => issue.number)
+		.filter((number) => gh(ctx.main, "issue", "view", String(number), "--json", "state", "--jq", ".state").stdout.trim() !== "CLOSED");
 	if (open.length > 0) return { text: `${spec} offen: ${open.map((number) => `#${number}`).join(", ")}`, changed: false };
 	git(ctx.main, "fetch", "--quiet", "origin", config.integration);
 	const shown = git(ctx.main, "show", `origin/${config.integration}:${path}`);
@@ -1067,7 +1118,7 @@ function cmdDoctor(ctx, { flags }) {
 	const projectSkills = claudeModsSkills(join(ctx.main, ".claude", "skills"));
 	const userSkills = claudeModsSkills(join(ctx.userDir, "skills"));
 	if (projectSkills.length > 0 && userSkills.length > 0)
-		add("warn", "Install", `Doppelt installiert: ${projectSkills.length} Skills auch in .claude/skills/ des Repos`, `node <claude-mods>/install.mjs --clean-project ${ctx.main}, dann committen`);
+		add("warn", "Install", `Doppelt installiert: ${projectSkills.length} Skills auch in .claude/skills/ des Repos`, `node <claude-mods>/install.mjs --clean-project ${ctx.main} --dry-run, dann ohne --dry-run (abweichende Kopien mit --force), committen`);
 	const projectHook = hookCommands(join(ctx.main, ".claude", "settings.json")).some((command) => command.includes("session-title.mjs"));
 	const userHook = hookCommands(join(ctx.userDir, "settings.json")).some((command) => command.includes("session-title.mjs"));
 	if (projectHook && userHook) add("warn", "Install", "Session-Titel-Hook im Repo und beim User registriert", "Hook aus .claude/settings.json des Repos entfernen (install.mjs --clean-project)");
@@ -1121,7 +1172,9 @@ function cmdDoctor(ctx, { flags }) {
 	}
 	for (const tree of worktrees) {
 		const old = tree.ageMs > staleMs;
-		const pushed = tree.branch && git(ctx.main, "ls-remote", "--exit-code", "--heads", "origin", tree.branch).code === 0;
+		// Pushed means the local head is on origin, not just that a branch of that name exists there.
+		const fetched = tree.branch && git(ctx.main, "fetch", "--quiet", "origin", tree.branch).code === 0;
+		const pushed = Boolean(fetched) && git(ctx.main, "rev-list", "--count", `origin/${tree.branch}..refs/heads/${tree.branch}`).stdout.trim() === "0";
 		if (!old) {
 			add("ok", "Reste", `Worktree ${tree.job}: aktiv (${formatDuration(tree.ageMs)})`);
 			continue;
@@ -1133,7 +1186,7 @@ function cmdDoctor(ctx, { flags }) {
 			rmSync(join(paths.root, tree.job), { recursive: true, force: true });
 			fixed.push(`Worktree ${tree.job} entfernt`);
 		} else
-			add("warn", "Reste", `Worktree ${tree.job} seit ${formatDuration(tree.ageMs)} unberührt${tree.dirty ? ", mit Änderungen" : ""}${pushed ? "" : ", Branch nicht gepusht"}`, safe ? "/factory doctor --fix" : `${tree.path} prüfen, dann node factory.mjs cleanup ${tree.job}`);
+			add("warn", "Reste", `Worktree ${tree.job} seit ${formatDuration(tree.ageMs)} unberührt${tree.dirty ? ", mit Änderungen" : ""}${pushed ? "" : ", Branch nicht gepusht"}`, safe ? "/factory doctor --fix" : `${tree.path} prüfen, dann factory.mjs cleanup ${tree.job} --force`);
 	}
 	if (existsSync(paths.root)) {
 		for (const entry of readdirSync(paths.root)) {
@@ -1175,7 +1228,8 @@ function cmdDoctor(ctx, { flags }) {
 				}
 				if (openPr || local) continue;
 				const age = labelAge(ctx, repo, n);
-				if (age !== null && age < staleMs) continue;
+				// Unknown age (the events could not be read) counts as fresh: another machine may have claimed it a minute ago.
+				if (age === null || age < staleMs) continue;
 				const where = branch ? `nur Branch ${branch}, kein PR` : "kein PR, kein Branch, kein Worktree";
 				if (fix && !branch) {
 					gh(ctx.main, "issue", "edit", String(n), "--remove-label", LABEL);

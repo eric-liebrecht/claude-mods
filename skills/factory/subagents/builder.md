@@ -35,7 +35,7 @@ The worktree is a checkout of the job branch outside the main checkout you start
 2. Every ticket with `gh issue view <n> --comments`, its parent spec (the `## Parent` section or the parent sub-issue) with its comments, and the mockup or prototype it links. The ticket's acceptance criteria are your test plan. Fallbacks when `gh` fails: `docs/agents/issue-tracker.md`.
 3. `CONTEXT.md` and the ADRs in `docs/adr/` of the area.
 4. The doc that owns each file **before** you edit it, as the config's `## Docs` says.
-5. When resumed after a review round: every `review-*.md` in the scratch folder. Address each finding in a `VERDICT: CHANGES` file. Notes in `VERDICT: PASS` files are optional.
+5. When resumed after a review round: the review files the message names. Address each finding in a `VERDICT: CHANGES` file. Notes in `VERDICT: PASS` files are optional.
 6. When started for a rework: `<scratch>/rework.md` and `git log --oneline <base>..HEAD`, so you know what is there.
 7. When resumed because the factory's checks failed (`<scratch>/check.md`) or the PR's CI failed (`<scratch>/ci.md`): that file. Its output names the failing command; reproduce it in the worktree, fix it at its cause, run **Validate** again.
 

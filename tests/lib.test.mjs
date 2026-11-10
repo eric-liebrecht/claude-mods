@@ -7,6 +7,7 @@ import {
 	backtickList,
 	blockedByLines,
 	closesLines,
+	codeLines,
 	commandHeads,
 	criteriaLine,
 	criterionState,
@@ -128,8 +129,9 @@ test("names of a job", () => {
 	assert.deepEqual(jobNumbers("typo"), []);
 	const paths = jobPaths("/w/app", "rating-filter-142", "/t");
 	assert.equal(paths.worktree, "/w/app-factory/rating-filter-142");
-	assert.equal(paths.scratch, "/t/factory/app/rating-filter-142");
-	assert.equal(paths.schemaLock, "/t/factory/app/.schema-lock");
+	assert.match(paths.scratch, /^\/t\/factory\/app-[0-9a-f]{8}\/rating-filter-142$/);
+	assert.equal(paths.schemaLock, join(paths.root, ".schema-lock"));
+	assert.notEqual(jobPaths("/v/app", "x", "/t").root, paths.root, "two checkouts named app keep apart");
 	assert.equal(
 		headSentence({ job: "j-1", issues: [1, 2], worktree: "/w", branch: "feat/j-1", base: "abc", scratch: "/s", schemaLock: "/l", skills: "/k", agents: "/a" }),
 		"Job: j-1. Tickets: #1, #2 in build order. Worktree: /w. Branch: feat/j-1. Base: abc. Scratch: /s. Schema lock: /l. Skills: /k. Agents: /a.",
@@ -149,6 +151,10 @@ test("globs decide which changes need a UI review", () => {
 	assert.equal(matchesAny(["apps/web/x.ts"], ["apps/web/**", "x"]), true);
 	assert.equal(matchesAny(["a"], []), true);
 	assert.equal(matchesAny([], []), false);
+});
+
+test("a command line ending in a backslash continues on the next", () => {
+	assert.deepEqual(codeLines("```bash\npnpm lint \\\n  --quiet\n# comment\npnpm test\n```"), ["pnpm lint --quiet", "pnpm test"]);
 });
 
 test("commands get their placeholders filled and quoted", () => {

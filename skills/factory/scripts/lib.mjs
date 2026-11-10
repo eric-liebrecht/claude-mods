@@ -1,6 +1,7 @@
 // Pure helpers of the factory scripts: reading docs/agents/factory.md, the Freigabe and spec rules of SKILL.md,
 // the names of a job, the version of the install and the usage in agent transcripts. No git, no gh: factory.mjs
 // runs those and hands their output here, so every rule can be tested without a repo.
+import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
@@ -50,7 +51,9 @@ export function sections(markdown) {
 export function codeLines(body = "") {
 	const match = /```[^\n]*\n([\s\S]*?)```/.exec(body);
 	if (!match) return [];
+	// One command per line; a line ending in a backslash continues on the next.
 	return match[1]
+		.replace(/\s*\\\r?\n\s*/g, " ")
 		.split(/\r?\n/)
 		.map((line) => line.trim())
 		.filter((line) => line !== "" && !line.startsWith("#"));
@@ -240,7 +243,8 @@ export function installDirs(main, env = process.env) {
 export function jobPaths(main, job, temp = tmpdir()) {
 	const name = basename(main);
 	const factoryDir = resolve(main, "..", `${name}-factory`);
-	const root = join(temp, "factory", name);
+	// Two checkouts with the same folder name must not share scratch folders and the schema lock.
+	const root = join(temp, "factory", `${name}-${createHash("sha256").update(resolve(main)).digest("hex").slice(0, 8)}`);
 	return {
 		name,
 		factoryDir,

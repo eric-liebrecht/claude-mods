@@ -11,8 +11,9 @@
 // `--uninstall` removes what this script installed. `--force` replaces a skill or agent of the same name that this
 // script did not install. `--dry-run` prints what would happen. Honours CLAUDE_CONFIG_DIR like Claude Code does.
 // Copies carry the version (`claude-mods <version>` in their marker), so `factory.mjs version` can name it.
-// `--clean-project <repo>` removes a repo's old project-local copies of these skills and agents and its
-// session-title hook, so they no longer shadow the user install; commit the change in that repo afterwards.
+// `--clean-project <repo>` removes a repo's project-local copies of these skills and agents (links, marked or
+// identical copies; with --force also copies that differ) and its session-title hook, so they no longer shadow the
+// user install; commit the change in that repo afterwards.
 //
 //   node install.mjs [--copy] [--force] [--dry-run] [--uninstall] [--clean-project <repo>]
 import {
@@ -150,6 +151,23 @@ function withoutHook(settings) {
 	return settings;
 }
 
+/** Whether a project copy has the same files and text as the source, the install marker left out. */
+function sameContent(target, from, file) {
+	const text = (path) => readFileSync(path, "utf8").replace(/\s*<!-- \.claude-mods[^>]*-->\s*$/, "").trimEnd();
+	try {
+		if (file) return text(target) === text(from);
+		const list = (dir) =>
+			readdirSync(dir, { recursive: true, withFileTypes: true })
+				.filter((entry) => entry.isFile() && entry.name !== MARKER)
+				.map((entry) => join(entry.parentPath ?? entry.path, entry.name).slice(dir.length + 1))
+				.sort();
+		const files = list(target);
+		return JSON.stringify(files) === JSON.stringify(list(from)) && files.every((name) => text(join(target, name)) === text(join(from, name)));
+	} catch {
+		return false;
+	}
+}
+
 function writeSettings(settings, file = settingsFile) {
 	log(`update ${file}`);
 	if (!dryRun) writeFileSync(file, `${JSON.stringify(settings, null, "\t")}\n`);
@@ -162,20 +180,22 @@ if (cleanProject) {
 		process.exit(2);
 	}
 	let removed = 0;
-	for (const skill of skills) {
-		const target = join(project, ".claude", "skills", skill);
-		if (!exists(target)) continue;
+	const kept = [];
+	/** A project copy goes when it is ours (a link or a marked copy), the same as the source, or with --force. */
+	const clean = (target, from, file) => {
+		if (!exists(target)) return;
+		if (!force && !ours(target, from) && !sameContent(target, from, file)) {
+			kept.push(target);
+			return;
+		}
 		log(`remove ${target}`);
 		remove(target);
 		removed += 1;
-	}
-	for (const agent of agents) {
-		const target = join(project, ".claude", "agents", agent);
-		if (!exists(target)) continue;
-		log(`remove ${target}`);
-		remove(target);
-		removed += 1;
-	}
+	};
+	for (const skill of skills) clean(join(project, ".claude", "skills", skill), join(source, skill), false);
+	for (const agent of agents) clean(join(project, ".claude", "agents", agent), join(agentSource, agent), true);
+	for (const target of kept)
+		console.warn(`kept ${target}: differs from claude-mods (an older copy or the repo's own), --force removes it`);
 	const projectSettings = join(project, ".claude", "settings.json");
 	if (existsSync(projectSettings)) {
 		const before = readFileSync(projectSettings, "utf8");
