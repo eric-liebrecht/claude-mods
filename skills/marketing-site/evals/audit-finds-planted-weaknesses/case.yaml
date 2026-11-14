@@ -1,0 +1,7 @@
+schema_version: "1.1"
+name: audit-finds-planted-weaknesses
+expected_outcome: |
+  A prioritised audit report file that finds the weaknesses planted in the three pages, each with a rule,
+  evidence and a fix with hypothesis and metric, and changes none of the pages.
+context:
+  scaffold_script: place-files.sh

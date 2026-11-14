@@ -1,0 +1,437 @@
+<!doctype html>
+<!--
+	marketing-site draft template. Copy to the project, fill every page from docs/marketing/brief.md,
+	then run: node <skill>/scripts/assemble-draft.mjs <this file> <out>.html
+	The two data-inline tags below are replaced by assets/site.css and assets/draft.js, the result is one file.
+	Example brand: KANZLEIFLOW (fictional), a website + lead service for tax firms. Replace all of it.
+	Pages: one <main data-page="..."> per page, linked as href="#/<page>". #/alle shows all pages.
+	Brand: override the tokens in the <style> block below, nothing else.
+-->
+<html lang="de">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="robots" content="noindex" />
+		<title>KANZLEIFLOW · Entwurf</title>
+		<link rel="preconnect" href="https://fonts.googleapis.com" />
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+		<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
+		<style data-inline="site.css"></style>
+		<style>
+			/* brand tokens from the brief (accent = the one colour for actions) */
+			:root {
+				--accent: #ff6a2b;
+			}
+		</style>
+	</head>
+	<!-- preset "dark" = no class; preset "split" = class="theme-split" -->
+	<body>
+		<a class="skip-link" href="#inhalt">Zum Inhalt springen</a>
+
+		<header class="site-header">
+			<div class="container">
+				<a class="logo" href="#/start">KANZLEI<span class="thin">FLOW</span></a>
+				<nav class="nav" aria-label="Hauptnavigation">
+					<a href="#/leistung">Leistung</a>
+					<a href="#/start?s=ablauf">Ablauf</a>
+					<a href="#/start?s=preise">Preise</a>
+					<a href="#/ueber-uns">Über uns</a>
+				</nav>
+				<a class="icon-btn" href="tel:+4951100000000" aria-label="Anrufen">
+					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z" /></svg>
+				</a>
+				<a class="btn btn--light" href="#/anfrage" data-cta="header">Kostenlosen Kanzlei-Check starten</a>
+				<button class="icon-btn menu-toggle" type="button" aria-expanded="false">Menü</button>
+			</div>
+		</header>
+
+		<!-- ===================== START ===================== -->
+		<main data-page="start" data-title="Mandanten-Website für Steuerkanzleien | KANZLEIFLOW" id="inhalt">
+			<!-- Hero: eyebrow = category keyword, H1 = outcome with punchline last, lead = what/for whom/how, CTA pair, two proof points, mockup -->
+			<section class="hero">
+				<div class="container hero__grid">
+					<div>
+						<span class="eyebrow">Website + Anfragen für Steuerkanzleien</span>
+						<h1 class="h1">Ihre Kanzlei-Website, die <span class="fade" data-typing='["Mandanten vorsortiert.","Erstgespräche füllt.","Anfragen qualifiziert."]'>Mandanten vorsortiert.</span></h1>
+						<p class="lead">Eine Website mit Anfrage-Check, gebaut für Kanzleien mit 5 bis 50 Mitarbeitenden. Sie bekommen nur noch Anfragen, die zu Ihrer Kanzlei passen.</p>
+						<div class="btn-row">
+							<a class="btn btn--primary" href="#/anfrage" data-cta="hero">Kostenlosen Kanzlei-Check starten <span class="arrow"></span></a>
+							<a class="btn btn--ghost" href="#/leistung">Leistung ansehen</a>
+						</div>
+						<ul class="proof-points">
+							<li><strong>2 Wochen</strong> bis zum klickbaren Entwurf</li>
+							<li><strong>Festpreis</strong> für den Bau</li>
+						</ul>
+					</div>
+					<div>
+						<!-- Mockup: the product in the customer's world, labelled, realistic sample data, accent only on what needs action -->
+						<div class="mockup" role="img" aria-label="Beispielansicht: Anfragen-Übersicht">
+							<div class="mockup__bar"><span>Anfragen · Kanzlei Muster</span><span class="mockup__tag">Beispielansicht</span></div>
+							<div class="mockup__body">
+								<div class="kpis">
+									<div class="kpi"><small>Neue Anfragen</small><b>14</b></div>
+									<div class="kpi"><small>Passend</small><b>9</b></div>
+									<div class="kpi"><small>Erstgespräche</small><b>6</b></div>
+									<div class="kpi"><small>Offen</small><b class="accent-text">2</b></div>
+								</div>
+								<table style="margin-top:12px">
+									<tr><th>Mandant</th><th>Bedarf</th><th>Status</th></tr>
+									<tr><td>GmbH, 12 MA</td><td>Lohn + FiBu</td><td><span class="pill">Termin Mo</span></td></tr>
+									<tr><td>Freiberufler</td><td>ESt</td><td><span class="pill">passt</span></td></tr>
+									<tr><td>Holding</td><td>Jahresabschluss</td><td><span class="pill pill--warn">Rückruf fällig</span></td></tr>
+								</table>
+							</div>
+						</div>
+						<p class="figure-caption">Beispiel · keine echten Mandantendaten</p>
+					</div>
+				</div>
+			</section>
+
+			<!-- "Passt, wenn": problem + qualification with a hard number, 4 pain cards -->
+			<section class="section">
+				<div class="container">
+					<div class="section-head">
+						<span class="eyebrow">Passt, wenn</span>
+						<h2 class="h2">Ihre Website bringt Anfragen. <span class="fade">Nur leider die falschen.</span></h2>
+						<p class="lead">Für Kanzleien mit 5 bis 50 Mitarbeitenden. Zu viele Anfragen zum Sortieren, zu wenig Zeit für Erstgespräche.</p>
+					</div>
+					<div class="grid grid--4">
+						<div class="card"><div class="card__label">Anfragen</div><div class="card__title">Alles landet im Postfach</div><p>Kontaktformular, Mail, Telefon. Niemand sieht vorab, ob die Anfrage passt.</p></div>
+						<div class="card"><div class="card__label">Zeit</div><div class="card__title">Erstgespräche ohne Mandat</div><p>Jede Woche Gespräche mit Interessenten, die nicht in Ihr Profil passen.</p></div>
+						<div class="card"><div class="card__label">Website</div><div class="card__title">Sieht aus wie 2015</div><p>Bewerber und Mandanten schließen von der Website auf die Kanzlei.</p></div>
+						<div class="card"><div class="card__label">Personal</div><div class="card__title">Fachkräfte fehlen</div><p>Wer weniger sortiert, hat mehr Zeit für bestehende Mandate.</p></div>
+					</div>
+				</div>
+			</section>
+
+			<!-- Method: named, numbered, duration + price type per step -->
+			<section class="section section--alt" id="ablauf">
+				<div class="container">
+					<div class="section-head">
+						<span class="eyebrow">Ablauf</span>
+						<h2 class="h2">Erst sehen, dann bauen, <span class="fade">dann Anfragen bekommen.</span></h2>
+						<p class="lead">Sie entscheiden nach jedem Schritt neu. Wer den Entwurf nicht überzeugend findet, geht ohne weitere Verpflichtung.</p>
+					</div>
+					<ol class="steps">
+						<li class="step"><div class="step__meta">2 Wochen · Festpreis</div><h3>Entwurf</h3><p>Wir nehmen Ihr Mandantenprofil auf. Am Ende steht ein klickbarer Entwurf und ein verbindlicher Festpreis.</p></li>
+						<li class="step"><div class="step__meta">nach Umfang · Festpreis</div><h3>Bau</h3><p>Website, Anfrage-Check, Texte und Übernahme der Inhalte.</p></li>
+						<li class="step"><div class="step__meta">monatlich · Abo</div><h3>Betrieb</h3><p>Hosting, Pflege und Auswertung der Anfragen aus einer Hand.</p></li>
+						<li class="step step--goal"><div class="step__meta">laufend</div><h3>Passende Mandate</h3><p>Sie sprechen nur noch mit Interessenten, die zu Ihnen passen.</p></li>
+					</ol>
+				</div>
+			</section>
+
+			<!-- Pricing = the steps; first card marked as entry; all cards same CTA; netto note for B2B -->
+			<section class="section" id="preise">
+				<div class="container">
+					<div class="section-head">
+						<span class="eyebrow">Preismodell</span>
+						<h2 class="h2">Festpreis für den Bau. <span class="fade">Keine offenen Stundensätze.</span></h2>
+						<p class="lead">Sie kennen den Preis, bevor wir bauen.</p>
+					</div>
+					<div class="grid grid--3">
+						<div class="price-card price-card--featured">
+							<span class="badge">Einstieg</span>
+							<div class="card__label">Schritt 1 · Sehen</div>
+							<div class="card__title">Entwurf</div>
+							<div class="price">790 € <small>Festpreis</small></div>
+							<ul class="checks"><li>Klickbarer Entwurf in 2 Wochen</li><li>Verbindlicher Festpreis für den Bau</li><li>Kein Bauauftrag ohne überzeugenden Entwurf</li><li>Wird bei Auftrag voll angerechnet</li></ul>
+							<a class="btn btn--primary btn--block" href="#/anfrage?paket=entwurf" data-cta="pricing">Kostenlosen Kanzlei-Check starten</a>
+						</div>
+						<div class="price-card">
+							<div class="card__label">Schritt 2 · Bauen</div>
+							<div class="card__title">Website + Anfrage-Check</div>
+							<div class="price">ab 6.900 € <small>Festpreis</small></div>
+							<ul class="checks"><li>Alle Seiten nach Ihrem Profil</li><li>Anfrage-Check mit Vorsortierung</li><li>Texte und Inhaltsübernahme</li></ul>
+							<a class="btn btn--ghost btn--block" href="#/anfrage?paket=bau" data-cta="pricing">Kostenlosen Kanzlei-Check starten</a>
+						</div>
+						<div class="price-card">
+							<div class="card__label">Schritt 3 · Betreiben</div>
+							<div class="card__title">Betrieb</div>
+							<div class="price">ab 290 € <small>/ Monat</small></div>
+							<ul class="checks"><li>Hosting, Pflege, Updates</li><li>Monatlicher Anfragen-Report</li><li>Ein fester Ansprechpartner</li></ul>
+							<a class="btn btn--ghost btn--block" href="#/anfrage?paket=betrieb" data-cta="pricing">Kostenlosen Kanzlei-Check starten</a>
+						</div>
+					</div>
+					<p class="note">Alle Preise netto zzgl. USt. Angebot ausschließlich für Unternehmen.</p>
+				</div>
+			</section>
+
+			<!-- Proof: real figures visible (never only in an accordion). Missing proof = marked placeholder, never invented -->
+			<section class="section section--alt">
+				<div class="container">
+					<div class="section-head">
+						<span class="eyebrow">Ergebnisse</span>
+						<h2 class="h2">Was Kanzleien <span class="fade">nach dem Start sagen.</span></h2>
+					</div>
+					<div class="grid grid--3">
+						<div class="placeholder">PROOF FEHLT: Testimonial mit Foto, Name, Rolle (Brief → proof)</div>
+						<div class="placeholder">PROOF FEHLT: Kennzahl, z. B. Anteil passender Anfragen</div>
+						<div class="placeholder">PROOF FEHLT: Kanzlei-Logo oder Fallbeispiel</div>
+					</div>
+					<!-- substitute until proof exists, always labelled: scenario today / with us -->
+					<div class="grid grid--2" style="margin-top:16px">
+						<div class="scenario">
+							<div class="scenario__head"><span>Kanzlei · 12 MA</span><span>Szenario</span></div>
+							<div class="scenario__cols">
+								<div><div class="card__label">Heute</div><p class="muted">Kontaktformular, jede Anfrage wird telefonisch vorqualifiziert.</p></div>
+								<div><div class="card__label">Mit Kanzlei-Check</div><p class="muted">Anfragen kommen sortiert nach Bedarf und Größe.</p><span class="scenario__result">nur passende Termine</span></div>
+							</div>
+						</div>
+						<div class="scenario">
+							<div class="scenario__head"><span>Kanzlei · 30 MA</span><span>Szenario</span></div>
+							<div class="scenario__cols">
+								<div><div class="card__label">Heute</div><p class="muted">Bewerber finden die Kanzlei, die Website überzeugt nicht.</p></div>
+								<div><div class="card__label">Mit Kanzlei-Check</div><p class="muted">Eigene Karriereseite mit Kurzbewerbung.</p><span class="scenario__result">Bewerbung in 2 Minuten</span></div>
+							</div>
+						</div>
+					</div>
+					<p class="note">Szenarien, wie wir sie in Gesprächen hören. Richtwerte, die wir mit Ihren Zahlen prüfen.</p>
+				</div>
+			</section>
+
+			<!-- Control / main objection of the category as cards -->
+			<section class="section">
+				<div class="container">
+					<div class="section-head">
+						<span class="eyebrow">Vertrauen</span>
+						<h2 class="h2">Berufsrecht bleibt Berufsrecht. <span class="fade">Ihre Daten bleiben bei Ihnen.</span></h2>
+					</div>
+					<div class="grid grid--4">
+						<div class="card"><div class="card__label">Berufsrecht</div><div class="card__title">Werbung nach StBerG</div><p>Texte ohne unzulässige Werbeaussagen, geprüft vor dem Start.</p></div>
+						<div class="card"><div class="card__label">DSGVO</div><div class="card__title">Server in Deutschland</div><p>Anfragen werden in der EU verarbeitet, mit Auftragsverarbeitungsvertrag.</p></div>
+						<div class="card"><div class="card__label">Kontrolle</div><div class="card__title">Sie geben frei</div><p>Kein Text geht ohne Ihre Freigabe online.</p></div>
+						<div class="card"><div class="card__label">Daten</div><div class="card__title">Export jederzeit</div><p>Bei Vertragsende erhalten Sie alle Inhalte und Anfragen.</p></div>
+					</div>
+				</div>
+			</section>
+
+			<!-- FAQ = objections; H2 names the audience; last question = how to start -->
+			<section class="section section--alt">
+				<div class="container">
+					<div class="section-head">
+						<span class="eyebrow">Häufige Fragen</span>
+						<h2 class="h2">Was Kanzleiinhaber <span class="fade">vorher wissen wollen.</span></h2>
+					</div>
+					<div class="faq">
+						<details><summary>Was kostet die neue Website?</summary><div>Der Entwurf kostet 790 € und wird bei Auftrag voll angerechnet. Der Bau startet ab 6.900 € zum Festpreis, der Betrieb ab 290 € im Monat. Alle Preise netto.</div></details>
+						<details><summary>Ist das mit dem Berufsrecht vereinbar?</summary><div>Ja. Wir schreiben sachlich und ohne unzulässige Werbeaussagen.</div></details>
+						<details><summary>Wie lange dauert es?</summary><div>Zwei Wochen bis zum Entwurf, danach meist vier bis sechs Wochen bis zum Start.</div></details>
+						<details><summary>Wie starte ich?</summary><div>Mit dem kostenlosen Kanzlei-Check: fünf Fragen, eine erste Einschätzung, danach ein 30-Minuten-Gespräch.</div></details>
+					</div>
+				</div>
+			</section>
+
+			<!-- Closing block: identical on every content page, first funnel question embedded as links -->
+			<section class="section section--glow" data-closing>
+				<div class="container closing">
+					<div>
+						<h2 class="h2">Ein Check. Zwei Wochen. <span class="fade">Ihre Website als klickbarer Entwurf.</span></h2>
+						<p class="lead" style="margin-top:16px">Fünf kurze Fragen, eine erste Einschätzung in unter einer Minute. Danach ein 30-Minuten-Gespräch, kostenlos und unverbindlich.</p>
+						<ul class="arrow-list"><li>Kein Pitch, kein Foliensatz</li><li>Danach Entwurf zum Festpreis von 790 € netto</li><li>Klickbarer Entwurf in zwei Wochen</li></ul>
+					</div>
+					<div class="funnel">
+						<div class="funnel__meta"><span>Kanzlei-Check · 5 Fragen · ca. 1 Minute</span></div>
+						<h3 style="margin-top:14px">Was soll Ihre Website vor allem leisten?</h3>
+						<div class="options">
+							<a class="option" href="#/anfrage?ziel=mandanten" data-cta="closing"><b>Passende Mandanten</b><small>Anfragen vorsortieren</small></a>
+							<a class="option" href="#/anfrage?ziel=bewerber" data-cta="closing"><b>Bewerber</b><small>Fachkräfte gewinnen</small></a>
+							<a class="option" href="#/anfrage?ziel=beides" data-cta="closing"><b>Beides</b><small>Mandanten und Bewerber</small></a>
+							<a class="option" href="#/anfrage?ziel=unklar" data-cta="closing"><b>Noch unklar</b><small>Das klären wir im Gespräch</small></a>
+						</div>
+						<a class="btn btn--primary btn--block" href="#/anfrage" data-cta="closing" style="margin-top:16px">Kostenlosen Kanzlei-Check starten <span class="arrow"></span></a>
+					</div>
+				</div>
+			</section>
+		</main>
+
+		<!-- ===================== DETAIL PAGE (template for every service/feature page) ===================== -->
+		<main data-page="leistung" data-title="Anfrage-Check für Steuerkanzleien | KANZLEIFLOW">
+			<section class="hero">
+				<div class="container hero__grid">
+					<div>
+						<div class="breadcrumb"><a href="#/start">Start</a> / Leistung</div>
+						<span class="eyebrow">Leistung · Anfrage-Check</span>
+						<h1 class="h1">Anfrage-Check für Kanzleien: <span class="fade">Erstgespräche, die sich lohnen.</span></h1>
+						<p class="lead">Interessenten beantworten vor dem Kontakt fünf Fragen. Sie sehen Bedarf, Größe und Dringlichkeit, bevor Sie zurückrufen.</p>
+						<div class="chips"><span>Anfrage</span><span>Check</span><span>Einordnung</span><span>Termin</span></div>
+						<div class="btn-row">
+							<a class="btn btn--primary" href="#/anfrage?paket=bau" data-cta="hero">Kostenlosen Kanzlei-Check starten <span class="arrow"></span></a>
+							<a class="btn btn--ghost" href="#/start">Alle Leistungen</a>
+						</div>
+					</div>
+					<div class="placeholder">MOCKUP: Anfrage mit Einordnung und Freigabe-Buttons (Beispielansicht)</div>
+				</div>
+			</section>
+			<section class="section">
+				<div class="container prose">
+					<h2>Warum Kontaktformulare Kanzleien Zeit kosten</h2>
+					<p>Ein Kontaktformular sagt Ihnen, dass jemand schreibt. Nicht, ob er passt. Der Anfrage-Check fragt vorher, was Sie für die Einordnung brauchen.</p>
+					<ul><li>Bedarf: Lohn, Finanzbuchhaltung, Jahresabschluss, Beratung</li><li>Größe und Rechtsform</li><li>Gewünschter Start</li></ul>
+				</div>
+			</section>
+			<section class="section section--alt">
+				<div class="container">
+					<div class="section-head"><span class="eyebrow">Beispieltag</span><h2 class="h2">Was der Check <span class="fade">zwischen 7 und 19 Uhr erledigt.</span></h2></div>
+					<div class="faq">
+						<details open><summary>07:00 · 4 neue Anfragen über Nacht</summary><div>Alle vier haben den Check ausgefüllt. Zwei passen zu Ihrem Profil.</div></details>
+						<details><summary>09:30 · Rückruf vorbereitet</summary><div>Bedarf und Größe stehen fest, das Gespräch beginnt bei der Sache.</div></details>
+					</div>
+					<p class="note">Beispielablauf. Mengen hängen von Ihrer Kanzlei ab.</p>
+				</div>
+			</section>
+			<section class="section">
+				<div class="container">
+					<div class="section-head"><span class="eyebrow">Weitere Leistungen</span><h2 class="h2">Auf derselben Website <span class="fade">laufen auch diese Bausteine.</span></h2></div>
+					<div class="grid grid--3">
+						<a class="card" href="#/leistung" style="text-decoration:none"><div class="card__label">Leistung · Karriere</div><div class="card__title">Karriereseite</div><p>Kurzbewerbung in zwei Minuten.</p><span class="text-link">Mehr</span></a>
+						<a class="card" href="#/leistung" style="text-decoration:none"><div class="card__label">Leistung · Termine</div><div class="card__title">Terminbuchung</div><p>Erstgespräch direkt im Kalender.</p><span class="text-link">Mehr</span></a>
+						<a class="card" href="#/leistung" style="text-decoration:none"><div class="card__label">Leistung · Report</div><div class="card__title">Anfragen-Report</div><p>Monatlich, welche Anfragen kamen.</p><span class="text-link">Mehr</span></a>
+					</div>
+				</div>
+			</section>
+			<!-- the closing block repeats on every content page -->
+			<div data-closing-slot></div>
+		</main>
+
+		<!-- ===================== ABOUT ===================== -->
+		<main data-page="ueber-uns" data-title="Über uns | KANZLEIFLOW">
+			<section class="hero">
+				<div class="container hero__grid hero__grid--single">
+					<div>
+						<span class="eyebrow">Über uns</span>
+						<h1 class="h1">Ein Team, das Ihre Website baut <span class="fade">und betreibt.</span></h1>
+						<p class="lead">Kein Weiterreichen zwischen Vertrieb, Projekt und Support.</p>
+						<div class="btn-row">
+							<a class="btn btn--primary" href="#/anfrage" data-cta="hero">Kostenlosen Kanzlei-Check starten <span class="arrow"></span></a>
+							<a class="btn btn--ghost" href="#/leistung">Leistung ansehen</a>
+						</div>
+					</div>
+				</div>
+			</section>
+			<section class="section">
+				<div class="container split">
+					<!-- every person: photo, name, role, bio with a checkable fact, LinkedIn -->
+					<div class="grid grid--2">
+						<div class="card"><div class="placeholder" style="min-height:200px">FOTO FEHLT</div><div class="card__title" style="margin-top:14px">Name Nachname</div><div class="card__label">Gründer · Geschäftsführung</div><p>Bio mit prüfbarem Beleg (Jahre, Projekte, vorherige Station). LinkedIn-Link.</p></div>
+						<div class="card"><div class="placeholder" style="min-height:200px">FOTO FEHLT</div><div class="card__title" style="margin-top:14px">Name Nachname</div><div class="card__label">Projektleitung</div><p>Bio mit prüfbarem Beleg.</p></div>
+					</div>
+					<div>
+						<span class="eyebrow">Wie wir arbeiten</span>
+						<ul class="checks"><li><b>Erst sehen, dann zahlen.</b> Der Entwurf kommt vor dem Bauauftrag.</li><li><b>Festpreis statt Stundenzettel.</b></li><li><b>Ehrlich gemessen.</b> Wir zählen nur Anfragen, die wirklich kamen.</li></ul>
+					</div>
+				</div>
+			</section>
+			<div data-closing-slot></div>
+		</main>
+
+		<!-- ===================== CONTACT = router ===================== -->
+		<main data-page="kontakt" data-title="Kontakt | KANZLEIFLOW">
+			<section class="hero">
+				<div class="container hero__grid hero__grid--single"><div><span class="eyebrow">Kontakt</span><h1 class="h1">Wählen Sie Ihren Weg <span class="fade">oder rufen Sie an.</span></h1></div></div>
+			</section>
+			<section class="section">
+				<div class="container grid grid--3">
+					<div class="card"><div class="card__title">Neue Website?</div><p>Fünf Fragen, erste Einschätzung in einer Minute.</p><a class="btn btn--primary" style="margin-top:16px" href="#/anfrage" data-cta="contact">Kostenlosen Kanzlei-Check starten</a></div>
+					<div class="card"><div class="card__title">Bestehender Kunde?</div><p>Ihr fester Ansprechpartner antwortet innerhalb eines Werktags.</p><a class="btn btn--ghost" style="margin-top:16px" href="mailto:support@example.de">Support schreiben</a></div>
+					<div class="card"><div class="card__title">Lieber sprechen?</div><p>Mo bis Fr, 9 bis 17 Uhr.</p><a class="btn btn--ghost" style="margin-top:16px" href="tel:+4951100000000">0511 000 000 00</a></div>
+				</div>
+			</section>
+		</main>
+
+		<!-- ===================== FUNNEL PAGE: no navigation, only "Schließen" ===================== -->
+		<main data-page="anfrage" data-title="Kanzlei-Check | KANZLEIFLOW" data-bare>
+			<div class="funnel-page">
+				<div class="container">
+					<div class="funnel-page__top"><span class="logo">KANZLEI<span class="thin">FLOW</span></span><a class="btn btn--ghost" href="#/start" style="min-height:36px">Schließen ×</a></div>
+					<div class="funnel-intro">
+						<span class="eyebrow">Anfrage · Kanzlei-Check</span>
+						<h1 class="h2">Ihre erste Einschätzung <span class="fade">in fünf Fragen.</span></h1>
+						<div class="checks-inline"><span>kostenlos</span><span>ca. 1 Minute</span><span>Antwort innerhalb von zwei Werktagen</span></div>
+					</div>
+					<div class="funnel" data-funnel aria-live="polite"></div>
+					<div style="height:64px"></div>
+				</div>
+			</div>
+		</main>
+
+		<footer class="site-footer">
+			<div class="container">
+				<div class="footer-grid">
+					<div><a class="logo" href="#/start">KANZLEI<span class="thin">FLOW</span></a><p class="muted" style="margin-top:12px;max-width:320px">Websites mit Anfrage-Check für Steuerkanzleien. Erst der Entwurf, dann der Festpreis.</p><p style="margin-top:12px"><a href="tel:+4951100000000">0511 000 000 00</a></p></div>
+					<div><h4>Leistungen</h4><ul><li><a href="#/leistung">Anfrage-Check</a></li><li><a href="#/leistung">Karriereseite</a></li><li><a href="#/leistung">Terminbuchung</a></li></ul></div>
+					<div><h4>Unternehmen</h4><ul><li><a href="#/ueber-uns">Über uns</a></li><li><a href="#/kontakt">Kontakt</a></li><li><a href="#/anfrage">Anfrage</a></li></ul></div>
+					<div><h4>Rechtliches</h4><ul><li><a href="#/start">Impressum</a></li><li><a href="#/start">Datenschutz</a></li></ul></div>
+				</div>
+				<div class="footer-bottom"><span>© 2026 KANZLEIFLOW</span><span>Kanzlei-Website · Anfrage-Check · Karriereseite</span></div>
+			</div>
+		</footer>
+
+		<!-- mobile sticky CTA: appears once the hero CTA has scrolled away -->
+		<div class="sticky-cta"><a class="btn btn--primary btn--block" href="#/anfrage" data-cta="sticky">Kostenlosen Kanzlei-Check starten <span class="arrow"></span></a></div>
+
+		<!-- draft chrome: page switcher, not part of the site -->
+		<nav class="draft-bar" aria-label="Entwurf: Seiten">
+			<button type="button" class="draft-bar__toggle">Seiten ▾</button>
+			<a href="#/start">Start</a><a href="#/leistung">Leistung</a><a href="#/ueber-uns">Über uns</a><a href="#/kontakt">Kontakt</a><a href="#/anfrage">Funnel</a><a href="#/alle">Alle</a>
+		</nav>
+
+		<!-- funnel config: same shape as assets/next/funnel-config.ts -->
+		<script type="application/json" id="funnel-config">
+			{
+				"name": "Kanzlei-Check",
+				"webhook": "",
+				"steps": [
+					{ "id": "ziel", "short": "Ziel", "question": "Was soll Ihre Website vor allem leisten?", "type": "single", "options": [
+						{ "value": "mandanten", "label": "Passende Mandanten", "sub": "Anfragen vorsortieren" },
+						{ "value": "bewerber", "label": "Bewerber", "sub": "Fachkräfte gewinnen" },
+						{ "value": "beides", "label": "Beides", "sub": "Mandanten und Bewerber" },
+						{ "value": "unklar", "label": "Noch unklar", "sub": "Das klären wir im Gespräch" }
+					] },
+					{ "id": "groesse", "short": "Mitarbeitende", "question": "Wie viele Mitarbeitende hat Ihre Kanzlei?", "type": "single", "options": [
+						{ "value": "1-4", "label": "1 bis 4" }, { "value": "5-19", "label": "5 bis 19" }, { "value": "20-50", "label": "20 bis 50" }, { "value": "50+", "label": "über 50" }
+					] },
+					{ "id": "anfragen", "short": "Anfragen/Monat", "question": "Wie viele Anfragen bekommen Sie pro Monat?", "hint": "Eine grobe Schätzung reicht.", "type": "single", "options": [
+						{ "value": "lt10", "label": "unter 10", "n": 6 }, { "value": "10-30", "label": "10 bis 30", "n": 20 }, { "value": "30plus", "label": "über 30", "n": 40 }
+					] },
+					{ "id": "heute", "short": "Heute", "question": "Wie kommen Anfragen heute an?", "hint": "Mehrfachauswahl.", "type": "multi", "min": 1, "options": [
+						{ "value": "formular", "label": "Kontaktformular" }, { "value": "mail", "label": "E-Mail" }, { "value": "telefon", "label": "Telefon" }, { "value": "empfehlung", "label": "Empfehlung" }
+					] },
+					{ "id": "start", "short": "Start", "question": "Wann möchten Sie starten?", "type": "single", "options": [
+						{ "value": "sofort", "label": "Schnellstmöglich", "sub": "Der Zustand kostet jetzt Zeit" }, { "value": "q", "label": "In 1 bis 3 Monaten", "sub": "Konkret in Planung" }, { "value": "info", "label": "Erst informieren" }
+					] }
+				],
+				"result": {
+					"title": "Ihre erste Einschätzung",
+					"label": "Zeit für Vorgespräche heute, geschätzt",
+					"expr": "anfragen * 20 / 60",
+					"digits": 0,
+					"valueTemplate": "ca. {value} h / Monat",
+					"explain": "Gerechnet aus Ihrer Angabe ({anfragen.label} pro Monat) und 20 Minuten Vorgespräch je Anfrage. Kein Angebot, keine Zusage.",
+					"notes": [
+						{ "when": { "groesse": "1-4" }, "text": "Für Kanzleien Ihrer Größe prüfen wir im Gespräch ehrlich, ob sich ein eigener Check lohnt." },
+						{ "when": { "ziel": ["bewerber", "beides"] }, "text": "Die Karriereseite planen wir im Entwurf direkt mit." }
+					],
+					"cta": "Weiter zur Kontaktangabe"
+				},
+				"contact": {
+					"title": "Wohin dürfen wir uns melden?",
+					"promise": "Wir melden uns innerhalb von zwei Werktagen für ein 30-Minuten-Gespräch.",
+					"fields": [
+						{ "name": "name", "label": "Name", "required": true, "autocomplete": "name" },
+						{ "name": "company", "label": "Kanzlei", "required": true, "autocomplete": "organization" },
+						{ "name": "email", "label": "E-Mail", "type": "email", "required": true, "autocomplete": "email" },
+						{ "name": "phone", "label": "Telefon", "type": "tel", "autocomplete": "tel" },
+						{ "name": "role", "label": "Ihre Rolle", "type": "select", "full": true, "options": ["Inhaber oder Partner", "Kanzleimanagement", "Sonstiges"] },
+						{ "name": "message", "label": "Was sollten wir vorab wissen?", "type": "textarea", "full": true, "placeholder": "z. B. Schwerpunkt Heilberufe, 3 offene Stellen" }
+					],
+					"submit": "Anfrage senden",
+					"legal": "Wir verarbeiten Ihre Angaben, um Ihre Anfrage zu beantworten. Details in der <a href=\"#/start\">Datenschutzerklärung</a>.",
+					"successTitle": "Danke, Ihre Anfrage ist da.",
+					"successText": "Wir melden uns innerhalb von zwei Werktagen."
+				}
+			}
+		</script>
+		<script data-inline="draft.js"></script>
+	</body>
+</html>
