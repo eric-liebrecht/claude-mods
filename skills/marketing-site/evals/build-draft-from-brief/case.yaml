@@ -1,0 +1,8 @@
+schema_version: "1.1"
+name: build-draft-from-brief
+expected_outcome: |
+  One self-contained HTML file with every page of brief field 12 in the split preset with the brand accent,
+  copy from the brief only, one CTA label, a working quiz funnel with a computed result, marked placeholders
+  for the missing testimonials and logos, and no Next.js code yet.
+context:
+  scaffold_script: place-files.sh

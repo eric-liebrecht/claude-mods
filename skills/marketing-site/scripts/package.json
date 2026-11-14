@@ -1,0 +1,9 @@
+{
+	"name": "marketing-site-scripts",
+	"private": true,
+	"type": "module",
+	"description": "Browser scripts of the marketing-site skill. Install once: npm install --prefix <skill>/scripts && npx --prefix <skill>/scripts playwright install chromium",
+	"dependencies": {
+		"playwright": "^1.50.0"
+	}
+}

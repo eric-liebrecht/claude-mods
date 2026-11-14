@@ -1,0 +1,5 @@
+schema_version: "1.1"
+name: new-site-starts-with-brief
+expected_outcome: |
+  The run does not start designing or coding. It looks for existing material, then asks about the brief
+  in grilling rounds, positioning and offer included, each question with a recommended answer.
