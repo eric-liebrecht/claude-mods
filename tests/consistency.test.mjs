@@ -51,3 +51,11 @@ test("the README's pinned release is the current version", () => {
 	const version = JSON.parse(read("package.json")).version;
 	for (const pin of README.matchAll(/v(\d+\.\d+\.\d+)/g)) assert.equal(pin[1], version, `README pins v${pin[1]}`);
 });
+
+test("every agent and the orchestrator read issues as JSON, never with the bare --comments view", () => {
+	const prose = { "SKILL.md": FACTORY, ...Object.fromEntries(AGENTS.map((agent) => [`${agent}.md`, read("skills", "factory", "subagents", `${agent}.md`)])) };
+	for (const [file, text] of Object.entries(prose))
+		for (const call of text.matchAll(/gh issue view [^`]*/g)) assert.match(call[0], /--json /, `${file}: ${call[0]}`);
+	for (const agent of ["builder", "reviewer-code", "reviewer-security", "reviewer-ui", "spec-writer"])
+		assert.ok(prose[`${agent}.md`].includes("gh issue view <n> --json title,body,comments"), agent);
+});

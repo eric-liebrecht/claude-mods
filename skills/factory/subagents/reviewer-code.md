@@ -17,9 +17,9 @@ The worktree is a checkout of the job branch outside the main checkout you start
 
 1. `AGENTS.md`, the package `AGENTS.md` of every package the branch touches, and `docs/agents/factory.md` (**the config**).
 2. The files of the config's `## Standards`.
-3. Every ticket the `Closes #<n>` lines of `<scratch>/pr.md` name (the builder may have dropped some of a bundle), with `gh issue view <n> --comments` and its parent spec (the `## Parent` section or the parent sub-issue; when the config has a `## Specs` section, the file its `Spec:` line names, in the worktree), plus the glossary and the decision records of the area (`Glossary` and `Decisions` in the config's `## Standards`; a line it leaves out means the file the template names there (`CONTEXT.md`, `docs/adr/`, `docs/agents/issue-tracker.md`) when that exists, and nothing otherwise). For a small fix, the description in your prompt. A **brief** (`Brief: <scratch>/brief.md` in your prompt, from `/factory grill`) stands in for the tickets and their spec: the user approved it after a grilling. Its `Akzeptanzkriterien` (`Acceptance criteria`) are the acceptance criteria, its `Entscheidungen` (`Decisions`) are settled, its `Nicht-Ziele` (`Out of scope`) are the Out of Scope. `<scratch>/pr.md` holds the builder's evidence.
-4. The change: `git log --oneline <base>..HEAD` and `git diff <base>...HEAD`. Read the changed files in full where the diff isn't enough, and the docs that own them (the config's `## Docs`).
-5. From round 2 on, your own `<scratch>/review-code.md` from the last round, before you overwrite it. With a previous head in your prompt, `git diff <previous head>..HEAD` is what the builder changed since: check that every finding of the last round is fixed there, and review that delta in full. Go back to the whole diff only where the delta touches code your last review did not see; the spot-check of a criterion stays.
+3. Every ticket the `Closes #<n>` lines of `<scratch>/pr.md` name (the builder may have dropped some of a bundle), with `gh issue view <n> --json title,body,comments` and its parent spec (the `## Parent` section or the parent sub-issue; when the config has a `## Specs` section, the file its `Spec:` line names, in the worktree), plus the glossary and the decision records of the area (`Glossary` and `Decisions` in the config's `## Standards`; a line it leaves out means the file the template names there (`CONTEXT.md`, `docs/adr/`, `docs/agents/issue-tracker.md`) when that exists, and nothing otherwise). For a small fix, the description in your prompt. A **brief** (`Brief: <scratch>/brief.md` in your prompt, from `/factory grill`) stands in for the tickets and their spec: the user approved it after a grilling. Its `Akzeptanzkriterien` (`Acceptance criteria`) are the acceptance criteria, its `Entscheidungen` (`Decisions`) are settled, its `Nicht-Ziele` (`Out of scope`) are the Out of Scope. `<scratch>/pr.md` holds the builder's evidence.
+4. The change, in round 1 (or with no previous head in your prompt): `git log --oneline <base>..HEAD` and `git diff <base>...HEAD`. Read the changed files in full where the diff isn't enough, and the docs that own them (the config's `## Docs`).
+5. From round 2 on, your own `<scratch>/review-code.md` from the last round, before you overwrite it. With a previous head in your prompt, the delta takes the place of step 4: `git log --oneline <previous head>..HEAD` and `git diff <previous head>..HEAD` are what the builder changed since your last review. Check that every finding of the last round is fixed there, and review that delta in full. Don't read the whole diff again, your last review saw it: `git diff --stat <base>...HEAD` gives the overview, and only where the delta needs context, read the touched file or its part of the whole diff (`git diff <base>...HEAD -- <path>`). The spot-check of a criterion stays.
 
 ## Check
 
@@ -29,10 +29,10 @@ The factory ran the commands of the config's `## Check` before this round (its g
 
 The `code-review` skill is loaded into your context. Run its process on the branch; the factory gives the answers it would ask the user for:
 
-1. **Fixed point**: `<base>`. The diff command is `cd <worktree> && git diff <base>...HEAD`, the commit list `cd <worktree> && git log --oneline <base>..HEAD`. From round 2 on, with a previous head, the sub-agents review the delta `cd <worktree> && git diff <previous head>..HEAD` and get the whole diff only as context.
+1. **Fixed point**: `<base>`. The diff command is `cd <worktree> && git diff <base>...HEAD`, the commit list `cd <worktree> && git log --oneline <base>..HEAD`. From round 2 on, with a previous head, the sub-agents review the delta `cd <worktree> && git diff <previous head>..HEAD`, with the context rule of **Read** step 5: the whole diff only for a touched path, never in full.
 2. **Spec source**: the tickets and parent specs from **Read**, the brief, or the small-fix description from your prompt.
 3. **Standards sources**: the files of **Read** steps 1 and 2, the **Standards axis** list below and the skill's smell baseline.
-4. **Sub-agents**: spawn the skill's Standards and Spec sub-agents in one message, `subagent_type: general-purpose`. Each prompt adds the worktree with the `cd <worktree> && ` rule, that the sub-agent is read-only (it writes and changes no file), and its axis list below in full.
+4. **Sub-agents**, in every round: spawn the skill's Standards and Spec sub-agents in one message, `subagent_type: general-purpose`. Each prompt adds the worktree with the `cd <worktree> && ` rule, that the sub-agent is read-only (it writes and changes no file), and its axis list below in full. This step is not yours to drop: `## Sub-agents` in `review-code.md` names both runs by their agent ids. Skip it only for a reason you name there as `Ausnahme: <reason>` (`Exception:`): the Agent tool is missing, or a sub-agent failed twice; from round 2 on also a delta so small that you read all of it yourself (name its size). "Not needed" or a small branch in round 1 is no reason. Without both runs and without such a reason, the verdict is `CHANGES`: the review is not done.
 5. **Aggregate** into `review-code.md` (**Write review-code.md**): the Spec report under `## Spec`, the Standards report under `## Standards`, each axis on its own, as the skill says. Check every finding against the code before you keep it; one that doesn't hold up is dropped. Baseline smells are judgement calls and go under Notes, unless one is a clear bug.
 
 ## What each axis looks for
@@ -51,6 +51,7 @@ The `code-review` skill is loaded into your context. Run its process on the bran
 **Standards axis**
 
 - **Docs in the same commit**: every doc that owns a changed file is updated in the branch, in the commit that changed its code, as the config's `## Docs` says.
+- **No old wording left**: where the branch changes a rule, command, name or behaviour that docs describe, `git grep` the repo for the old wording (its key words, the old command or name), checklists and check sections included. A hit that still states the old rule is a missing docs update, CHANGES; records of the past (decision records, changelogs, logs) keep their wording.
 - **One source per fact**: shared types and DTOs only where `AGENTS.md` puts them; no second copy of a type, message, label or constant; a function a second module uses moves to the shared place.
 - **Package rules**: the rules of each touched package's `AGENTS.md` and of the config's `## Standards`.
 - **Domain and copy**: the glossary's terms, none of their avoided synonyms; English code, user-facing copy in the language `AGENTS.md` names; no decision record silently contradicted.
@@ -76,6 +77,13 @@ VERDICT: PASS | CHANGES
 
 1. <path:line> <the rule (file and rule), the problem, and the fix you want>
 
+## Sub-agents
+
+- Standards: <agent id>
+- Spec: <agent id>
+
+(or one line `Ausnahme: <reason>`, as **Review with code-review** step 4 says)
+
 ## For the human
 
 What only a human can decide before the merge: a product decision the change rests on (what the config's `## Product decisions` lists, or a business rule the tickets leave open), a design question. "None." when there is none.
@@ -86,6 +94,6 @@ Non-blocking observations and baseline smells. Optional.
 ```
 
 - The first line must be exactly `VERDICT: PASS` or `VERDICT: CHANGES`.
-- A failing check is always CHANGES. Otherwise use CHANGES only for bugs, spec gaps, a missing docs update or a clear break of a documented rule. Style preferences go under Notes.
+- A failing check is always CHANGES, and so is a review without its two sub-agent runs and without an `Ausnahme:` under `## Sub-agents`. Otherwise use CHANGES only for bugs, spec gaps, a missing docs update or a clear break of a documented rule. Style preferences go under Notes.
 - Under Spec and Standards, write "None." when there are none.
 - A product decision is not a CHANGES: put it under For the human, and the PR opens as a draft.

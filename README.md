@@ -52,7 +52,7 @@ node ~/.claude-mods/install.mjs
 
 It honours `CLAUDE_CONFIG_DIR`. Then per repo: copy [skills/factory/config.md](./skills/factory/config.md) to `docs/agents/factory.md` and fill it in (the factory stops with a hint when it is missing), and run `/factory doctor` once: it checks the install, every section of the config and the commands it names.
 
-**Update:** `git -C ~/.claude-mods pull && node ~/.claude-mods/install.mjs` (the install again links skills and agents a release adds, such as `reviewer-ui` in 1.4.0, and refreshes `--copy` copies), then restart the sessions. **Pin** a machine to a release with `git -C ~/.claude-mods checkout v1.4.0`; back to the newest with `git -C ~/.claude-mods checkout main && git -C ~/.claude-mods pull`.
+**Update:** `git -C ~/.claude-mods pull && node ~/.claude-mods/install.mjs` (the install again links skills and agents a release adds, such as `reviewer-ui` in 1.4.0, and refreshes `--copy` copies), then restart the sessions. **Pin** a machine to a release with `git -C ~/.claude-mods checkout v1.5.0`; back to the newest with `git -C ~/.claude-mods checkout main && git -C ~/.claude-mods pull`.
 
 **Don't install the same skills twice.** A skill in `~/.claude/skills/` wins over the project's `.claude/skills/` of the same name, but an agent in the project's `.claude/agents/` wins over the user's, so an old project-local copy mixes versions. Remove the project's copies of these skills and agents (and the project's session-title hook) when you switch: `node ~/.claude-mods/install.mjs --clean-project <repo>` (`--dry-run` first shows what goes), then commit in that repo. `/factory doctor` warns when a repo still has them, and when an installed agent differs from the factory that runs. Don't install the same names from `mattpocock/skills` either.
 
@@ -65,7 +65,7 @@ git clone --depth 1 https://github.com/eric-liebrecht/claude-mods ~/.claude-mods
 node ~/.claude-mods/install.mjs --copy
 ```
 
-Add `--branch v1.4.0` to the clone to pin a release. The factory names its cloud session itself; the hook is not needed there.
+Add `--branch v1.5.0` to the clone to pin a release. The factory names its cloud session itself; the hook is not needed there.
 
 ### Project-local install
 
@@ -117,4 +117,4 @@ The hook answers only `/factory` prompts and reads the issue titles with `gh`; e
 
 ### Tests
 
-`npm test` (Node 22 or newer, Git; no install) runs [tests/](./tests/): the rules of `lib.mjs`, every command of `factory.mjs` against a throwaway Git repo with a fake `gh`, `install.mjs` against a throwaway `CLAUDE_CONFIG_DIR`, the session-title hook, `transcript.mjs`, and a consistency check that the agents, skills, the help, this README and the commands of `factory.mjs` name the same things. The screenshot test runs only where Playwright is installed. The workflow [ci.yml](./.github/workflows/ci.yml) runs them on every pull request and on `main`.
+`npm test` (Node 22 or newer, Git; no install) runs [tests/](./tests/): the rules of `lib.mjs`, every command of `factory.mjs` against a throwaway Git repo with a fake `gh`, `install.mjs` against a throwaway `CLAUDE_CONFIG_DIR`, the session-title hook, `transcript.mjs`, and a consistency check that the agents, skills, the help, this README and the commands of `factory.mjs` name the same things and that every agent reads issues with `gh issue view --json`. The screenshot test runs only where Playwright is installed. The workflow [ci.yml](./.github/workflows/ci.yml) runs them on every pull request and on `main`.
