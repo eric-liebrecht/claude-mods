@@ -17,7 +17,7 @@ The worktree is the job's checkout; read the repo there. The shell returns to th
 2. `<scratch>/agents.md`: one line per agent run of the job, with its agent, round and agent id.
 3. What the job cost: `node <skills>/factory/scripts/factory.mjs stats <job>` from the main checkout prints duration, tokens and tool calls per agent run. Start with the most expensive.
 4. The transcripts, condensed: `node <skills>/factory/scripts/transcript.mjs <id> …` from the main checkout, one call per agent id, in the order of `agents.md`. Each prints its duration and tokens, the prompts, the agent's texts, every tool call as one line and every failed tool result. Read them one at a time; for a long builder transcript, pass `--max 40000`.
-5. `<scratch>/history/`: the review files of every round (`review-security-<N>.md`, `review-code-<N>.md`, `review-ui-<N>.md`), the factory's check results (`check-<N>.md`), the CI logs (`ci-<N>.md`), the builder's reports (`builder-<N>.md`), and `<scratch>/pr.md`.
+5. `<scratch>/history/`: the review files of every round (`review-security-<N>.md`, `review-code-<N>.md`, `review-ui-<N>.md`), the factory's check results (`check-<N>.md`), the CI logs (`ci-<N>.md`), the builder's reports (`builder-<N>.md`, and `builder-<N>-aborted.md` with the state an aborted run left), and `<scratch>/pr.md`.
 6. What the agents were told: `<agents>/*.md`, `<skills>/factory/SKILL.md`, `docs/agents/factory.md`, `AGENTS.md` and the package `AGENTS.md` the job touched. A finding about one of them names the file and the line.
 
 ## Look for

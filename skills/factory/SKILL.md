@@ -15,7 +15,7 @@ You orchestrate jobs: a released ticket (`ready-for-agent`), or a **bundle** of 
 
 **Every message to the user follows [Output](#output)**, from the first line to the last, also when the user asks for the status.
 
-**Language.** `language` of `factory.mjs ready` or `claim` is the config's `Language`: `de` (the default) or `en`. Everything the factory writes is in it: its messages, the comments it puts on issues and PRs, the PR footer, `spec-pr.md`, the specs it drafts. This file writes all of them in German; with `en` write each in English with the same structure and fixed words translated (`Du musst:` → `You must:`, `Runde` → `Round`, `Ergebnis` → `Result`, `Aufwand:` → `Effort:`, `Aufgeräumt:` → `Cleaned up:`, `läuft` → `running`, `wartet auf` → `waiting for`, `fertig` → `done`, `Entwurf` → `draft`, `Befund(e)` → `finding(s)`, `nicht gestartet` → `not started`), and translate the German `reason`, `mustDo`, `line` and `message` texts of `factory.mjs`. `/factory help` stays German: it runs before the config is read.
+**Language.** `language` of `factory.mjs ready` or `claim` is the config's `Language`: `de` (the default) or `en`. Everything the factory writes is in it: its messages, the comments it puts on issues and PRs, the PR footer, `spec-pr.md`, the specs it drafts. This file writes all of them in German; with `en` write each in English with the same structure and fixed words translated (`Du musst:` → `You must:`, `Runde` → `Round`, `Ergebnis` → `Result`, `Aufwand:` → `Effort:`, `Aufgeräumt:` → `Cleaned up:`, `läuft` → `running`, `wartet auf` → `waiting for`, `fertig` → `done`, `Entwurf` → `draft`, `Befund(e)` → `finding(s)`, `nicht gestartet` → `not started`, `abgebrochen` → `aborted`, `Neustart` → `restart`), and translate the German `reason`, `mustDo`, `line` and `message` texts of `factory.mjs`. `/factory help` stays German: it runs before the config is read.
 
 ## /factory or /factory help
 
@@ -110,7 +110,7 @@ The agents live in `<agents>` (**Names**); their source is `<skills>/factory/sub
 The retro sees what the job's agents did through two things you keep in the scratch folder while the job runs:
 
 - `<scratch>/agents.md`: one line per agent run, appended when you spawn the agent: `<agent> <round> <agent id>` (`builder 1 a1b2c3…`, `security 1 d4e5f6…`, `ui 1 …`). The agent id is the `agentId` the Agent tool result names. A builder resumed with `SendMessage` keeps its id and gets one more line with the new round. `factory.mjs stats <job>` reads this file.
-- `<scratch>/history/`: when a builder finishes, its final report as `builder-<N>.md` (`builder-<N>-rebase.md` for a rebase, `builder-<N>-checks.md` and `builder-<N>-ci.md` for those fixes); after each gate, `cp` of `check.md` to `check-<N>.md`; when a review round is done, `cp` of every review file of the round to `review-security-<N>.md`, `review-code-<N>.md` and `review-ui-<N>.md`; after a red CI, `cp` of `ci.md` to `ci-<N>.md`. Always before the next run overwrites them.
+- `<scratch>/history/`: when a builder finishes, the text of its final report (the message that starts with `STATUS:`, verbatim, nothing else: never its transcript, a `.jsonl` file or the tool's metadata) as `builder-<N>.md` (`builder-<N>-rebase.md` for a rebase, `builder-<N>-checks.md` and `builder-<N>-ci.md` for those fixes, `builder-<N>-aborted.md` for a run that was aborted, **Builder aborted**); after each gate, `cp` of `check.md` to `check-<N>.md`; when a review round is done, `cp` of every review file of the round to `review-security-<N>.md`, `review-code-<N>.md` and `review-ui-<N>.md`; after a red CI, `cp` of `ci.md` to `ci-<N>.md`. Always before the next run overwrites them.
 
 Every agent prompt starts with `<head>`, the sentence **Claim** returns as `head`:
 `Job: <job>. Tickets: #<n>[, #<m> …] in build order (or: Small fix: <description, verbatim>). Worktree: <worktree>. Branch: <branch>. Base: <base>. Scratch: <scratch>. Schema lock: <schema lock>. Skills: <skills>. Agents: <agents>.`
@@ -252,11 +252,23 @@ With `en`: `# Brief:`, `Approved by <the user> in grilling, <date>.`, `## Goal`,
 
 ## Build check
 
-The first line of the builder's final report is `STATUS: READY` or `STATUS: BLOCKED`.
+The first line of the builder's final report is `STATUS: READY` or `STATUS: BLOCKED`. A builder run that ends without such a report was aborted: go to **Builder aborted**.
 
 - `READY`: start the next review round, from its gate.
 - `BLOCKED` on the schema lock, in a batch where another job of this session holds it: wait for that job's **Clean up**, then resume the builder with `The schema lock is free. Continue.`
 - Any other `BLOCKED`: if the branch has commits beyond `<base>`, go to **Open PR** as a draft with the blocker under Needs human. Otherwise go to **Clean up** with the blocker as `⛔ <reason>`.
+
+## Builder aborted
+
+A builder run is aborted when it ends without a final report that starts with `STATUS:`: the Agent tool or `SendMessage` returns an error or an exit code (137: the process was killed), the session or its container restarted, or the result is a fragment. Don't improvise a prompt for it; take these steps:
+
+1. **Agent id.** When the result names no `agentId`, the id is not lost: the run's transcript is `<config>/projects/<project>/<session>/subagents/agent-<id>.jsonl`, `<config>` being `$CLAUDE_CONFIG_DIR` or `~/.claude`. `grep -lF "Job: <job>." <config>/projects/*/*/subagents/agent-*.jsonl` lists the job's agent runs; the builder's is the one with this run's prompt (`Build round`, `Rework:` or the message you resumed it with). Add its line to `agents.md` when it is missing, so `stats` and the retro see the run.
+2. **State.** In the worktree: `git branch --show-current`, `git status --porcelain`, `git log --oneline <base>..HEAD`, whether a rebase is in progress (`git status` says so); whether `<scratch>/pr.md` exists; the `owner` of the schema lock.
+3. **History.** Write `<scratch>/history/builder-<N>-aborted.md`: a line `ABGEBROCHEN: <what the tool returned, one line>`, then the state of step 2. Nothing of the transcript goes into `history/`; the retro reads it through `transcript.mjs`.
+4. **New builder.** Spawn a new `builder` (an aborted run is not resumed) with the name `builder-<job>` and the prompt of the aborted run followed by ` Restart: the previous builder of this round was aborted. <the state of step 2, in one line>.` For a run started with `<head> Build round 1.` that is `<head> Build round 1. Restart: …`; for a run you resumed, `<head>`, then the message you resumed it with, then `Restart: …`. When the Agent tool refuses the name as taken, use `builder-<job>-<k>`, and send every later message of the job to that name. Append `builder <N> <id>` to `agents.md`. The schema lock stays: it belongs to the job, not to the run. When the builder finishes, go to **Build check**.
+5. **Once per run.** When the new builder is aborted too, the run counts as `BLOCKED` with `Builder abgebrochen`, and **Build check** takes it from there: a draft with the commits so far, or **Clean up**.
+
+The **Step** line of an aborted run: `#142 · builder 1 · ⛔ abgebrochen → builder 1 Neustart`.
 
 ## Review round N
 
@@ -377,7 +389,7 @@ Every message to the user is one of the blocks below, filled in, in the factory'
 Fixed words, nothing else in their place:
 
 - **Job label**: its ticket numbers, `#142`, a bundle `#143+#147`; a small fix without a ticket: `fix <slug>`; a **/factory grill** job: `grill <slug>`.
-- **Agent**: `builder`, `security`, `code`, `ui`, `spec-writer`, each with its round: `builder 2`, `security 1`. A rework builder counts from 1 again; a rebase is `builder <n> Rebase`, a fix after red checks `builder <n> Checks`, after a red CI `builder <n> CI`. The retro is `retro`, without a round. Steps without an agent: `Checks <n>` (the gate of round `<n>`), `CI`.
+- **Agent**: `builder`, `security`, `code`, `ui`, `spec-writer`, each with its round: `builder 2`, `security 1`. A rework builder counts from 1 again; a rebase is `builder <n> Rebase`, a fix after red checks `builder <n> Checks`, after a red CI `builder <n> CI`, a new builder after an aborted run `builder <n> Neustart`. The retro is `retro`, without a round. Steps without an agent: `Checks <n>` (the gate of round `<n>`), `CI`.
 - **Agent result**: `✓` (READY, PASS, green), `✓ <k> Commits` for a builder, `✓ Entwurf` for the spec writer, `✓ <k> Befunde` for the retro (`✓ 1 Befund`, `✓ keine Befunde`), `✗ <k> Findings: <main finding>` (CHANGES), singular for one (`✓ 1 Commit`, `✗ 1 Finding: …`), `✗ <command>` for a red gate, `✗ <check>` for a red CI, `⛔ <reason>` (BLOCKED, failure), `🔄 läuft` (spawned or waiting, not finished).
 - **Job result**: `🔄` (running), `✅ #<pr>` (PR ready, CI green), `⚠️ #<pr> Draft` (PR needs a human), `📝 Spec #<n>` (spec drafted: its issue, or its PR with **Specs in the repo**), `⛔ <reason>` (no PR).
 - A `<reason>` or `<main finding>` has at most six words and names the cause, not the step: `Blocker #158 offen`, `Spec #120 nicht freigegeben`, `läuft bereits`, `npm ci fehlgeschlagen`, `Zugriffsprüfung fehlt`.

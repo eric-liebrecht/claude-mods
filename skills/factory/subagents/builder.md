@@ -37,9 +37,10 @@ A **brief** (`Brief: <scratch>/brief.md` in your prompt, from `/factory grill`) 
 2. Every ticket with `gh issue view <n> --comments`, its parent spec (the `## Parent` section or the parent sub-issue) with its comments, and the mockup or prototype it links. The ticket's acceptance criteria are your test plan. When `gh` fails: the issue tracker fallbacks, or BLOCKED without them.
 3. The glossary and the decision records of the area.
 4. The doc that owns each file **before** you edit it, as the config's `## Docs` says.
-5. When resumed after a review round: the review files the message names. Address each finding in a `VERDICT: CHANGES` file. Notes in `VERDICT: PASS` files are optional.
+5. When resumed after a review round: the review files the message names. Address each finding in a `VERDICT: CHANGES` file. Notes (under `## Notes`, and every note of a `VERDICT: PASS` file) are optional, except on the config's `## Danger list`: a note that would change a file on that list never changes it. Name the note under `## Merge Danger` in `pr.md` instead, so the human decides; a change to such a file reruns the slow checks and adds a Needs human item for what was only a note.
 6. When started for a rework: `<scratch>/rework.md` and `git log --oneline <base>..HEAD`, so you know what is there.
 7. When resumed because the factory's checks failed (`<scratch>/check.md`) or the PR's CI failed (`<scratch>/ci.md`): that file. Its output names the failing command; reproduce it in the worktree, fix it at its cause, run **Validate** again.
+8. When your prompt has a `Restart:` part: an earlier builder of this round was aborted mid-work; the prompt before `Restart:` is its task, the part after it the state it left. `git log --oneline <base>..HEAD`, `git status` and `git diff` show what it left. Its commits stay; its uncommitted changes you finish or discard (`git restore` and `git clean` on those files only); a rebase in progress you abort with `git rebase --abort` and start again. A schema lock whose `owner` is your job is already yours. Then do the task.
 
 ## Specs in the repo
 
@@ -56,6 +57,7 @@ When the config has a `## Specs` section, a ticket's spec is not an issue but th
 - Work the layers the ticket touches from the data outwards (schema, shared contract, backend, frontend, docs), each by the rules of its package `AGENTS.md`:
     - **Schema**: take the schema lock first: `mkdir <schema lock> && echo <job> > <schema lock>/owner`. When `mkdir` fails and `owner` names another job, report BLOCKED with `Schema lock held by <owner>`; never remove a lock you don't own. Then change the schema files and create a migration with the commands of the config's `## Schema` (never edit an applied migration), then its regenerate command. No database reachable, or the migration tool asks to reset the database: BLOCKED, and never reset it. The orchestrator releases the lock when the job ends.
     - **Docs**: update every owning doc in the same commit as the code, as the config's `## Docs` says. New domain terms go into the glossary.
+    - **What is wrong in a doc you touch anyway**: an obvious error you see in a doc you edit for the job (a command, path, endpoint, check or statement the code contradicts) never stays unmentioned. Fix it in the same commit when the fix is small and certain; otherwise (it needs a decision, or the fix reaches beyond the doc) leave it and name it under `## Findings` in your report and in `pr.md`'s Summary.
 - Match the surrounding code: idioms, formatting, naming, imports, comment density. Code in English, user-facing copy in the language `AGENTS.md` names.
 - Make the smallest change that fully meets the ticket. Reuse shared types and helpers before writing one.
 - A large decision is the human's: anything the config's `## Product decisions` lists, a new service or provider, a cost, an irreversible data choice, a conflict with a decision record, a change to the design system, or a new screen without an approved mockup. Report BLOCKED. Small ambiguities you decide yourself and list as Assumptions.
@@ -69,6 +71,11 @@ Run the commands of the config's `## Validate` in the worktree, with `<files>` t
 A failure is fixed at its cause (tooling problems in the tooling), with production code and checks left intact.
 
 `node <skills>/factory/scripts/factory.mjs check <job> --section Validate` runs them for you with `<files>` and `<base>` filled in and writes the result to `<scratch>/validate.md`.
+
+How you run them:
+
+- **Long commands in the background.** A command that can take more than a few minutes (the full Validate, a whole test suite, end-to-end tests, a build, a deploy dry run) runs with `run_in_background: true`; then wait for the notification that it finished and read its output. A foreground call with a `timeout` does not reliably bound how long you wait. Never wait with `pgrep`, `ps` or `sleep` loops: `pgrep -f <pattern>` also matches the shell that runs it, so it never reports the end.
+- **Honest exit codes.** Every command whose exit code counts (a check, a test run, a build, the evidence in `pr.md`) runs as `cd <worktree> && set -euo pipefail && <command>`, and its exit code is the one the tool reports. Never pipe such a command into `tail`, `head`, `grep` or `tee`: the pipe's exit code is theirs, and a failure behind it reads as a pass. For long output, redirect it (`<command> > <scratch>/<name>.log 2>&1`) and read the end of the file in the next call. A command you report as passing exited 0 in the call that ran it.
 
 Agents don't start dev servers by default. With a `## Preview` in the config, the factory's UI reviewer looks at the changed screens; to look at one yourself, `node <skills>/factory/scripts/factory.mjs preview start <job>` prints its URL and `… preview stop <job>` ends it. Without `## Preview`, say in the report that a changed screen was not checked in a browser.
 
@@ -124,6 +131,10 @@ Only in a bundle: each ticket you left out and why. "None." when there are none.
 ## Assumptions
 
 Decisions you made where the ticket was ambiguous, each with a one-line reason. "None." when there are none.
+
+## Findings
+
+Errors you saw in a doc you touched and left as they are (**Build**), each with `path:line`, what is wrong and why you did not fix it. "None." when there are none.
 
 ## Round <N>
 
