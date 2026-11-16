@@ -109,8 +109,8 @@ The agents live in `<agents>` (**Names**); their source is `<skills>/factory/sub
 
 The retro sees what the job's agents did through two things you keep in the scratch folder while the job runs:
 
-- `<scratch>/agents.md`: one line per agent run, appended when you spawn the agent: `<agent> <round> <agent id>` (`builder 1 a1b2c3…`, `security 1 d4e5f6…`, `ui 1 …`). The agent id is the `agentId` the Agent tool result names. A builder resumed with `SendMessage` keeps its id and gets one more line with the new round. `factory.mjs stats <job>` reads this file.
-- `<scratch>/history/`: when a builder finishes, its final report as `builder-<N>.md` (`builder-<N>-rebase.md` for a rebase, `builder-<N>-checks.md` and `builder-<N>-ci.md` for those fixes); after each gate, `cp` of `check.md` to `check-<N>.md`; when a review round is done, `cp` of every review file of the round to `review-security-<N>.md`, `review-code-<N>.md` and `review-ui-<N>.md`; after a red CI, `cp` of `ci.md` to `ci-<N>.md`. Always before the next run overwrites them.
+- `<scratch>/agents.md`: one line per agent run, appended when you spawn the agent: `<agent> <round> <agent id>` (`builder 1 a1b2c3…`, `security 1 d4e5f6…`, `ui 1 …`). The agent id is the `agentId` the Agent tool result names. A builder resumed with `SendMessage` keeps its id and gets one more line with the new round. When a result names no id (the agent was aborted), it is not lost: the transcript lies as `agent-<id>.jsonl` in the session's `subagents/` folder under `~/.claude/projects/` (or `$CLAUDE_CONFIG_DIR/projects`); take the newest one whose first prompt starts with this job's `<head>`, and add its line all the same. `factory.mjs stats <job>` reads this file.
+- `<scratch>/history/`: when a builder finishes, its final report as `builder-<N>.md`: the text of its last message, the report that starts with `STATUS:`, never the transcript or the raw JSON of the tool result (the retro reads the transcript by the id in `agents.md`). An aborted builder gets `builder-<N>-aborted.md` instead, written by you as **Builder aborted** says. Likewise `builder-<N>-rebase.md` for a rebase, `builder-<N>-checks.md` and `builder-<N>-ci.md` for those fixes. After each gate, `cp` of `check.md` to `check-<N>.md`; when a review round is done, `cp` of every review file of the round to `review-security-<N>.md`, `review-code-<N>.md` and `review-ui-<N>.md`; after a red CI, `cp` of `ci.md` to `ci-<N>.md`. Always before the next run overwrites them.
 
 Every agent prompt starts with `<head>`, the sentence **Claim** returns as `head`:
 `Job: <job>. Tickets: #<n>[, #<m> …] in build order (or: Small fix: <description, verbatim>). Worktree: <worktree>. Branch: <branch>. Base: <base>. Scratch: <scratch>. Schema lock: <schema lock>. Skills: <skills>. Agents: <agents>.`
@@ -252,11 +252,22 @@ With `en`: `# Brief:`, `Approved by <the user> in grilling, <date>.`, `## Goal`,
 
 ## Build check
 
-The first line of the builder's final report is `STATUS: READY` or `STATUS: BLOCKED`.
+The first line of the builder's final report is `STATUS: READY` or `STATUS: BLOCKED`. No report, or a first line without `STATUS:`: **Builder aborted**.
 
 - `READY`: start the next review round, from its gate.
 - `BLOCKED` on the schema lock, in a batch where another job of this session holds it: wait for that job's **Clean up**, then resume the builder with `The schema lock is free. Continue.`
 - Any other `BLOCKED`: if the branch has commits beyond `<base>`, go to **Open PR** as a draft with the blocker under Needs human. Otherwise go to **Clean up** with the blocker as `⛔ <reason>`.
+
+## Builder aborted
+
+A builder is aborted when it ends without a report: the Agent tool or `SendMessage` returns an error, a kill (`Exit 137`), a timeout, or a last message whose first line is not `STATUS:`. Never improvise a prompt for it; take the same steps every time:
+
+1. **Record.** The builder's line in `agents.md`, with the id from its `subagents/` transcript when the result named none (**Record**).
+2. **State.** In the worktree: `git branch --show-current` (the job's branch, or stop with `⛔ Worktree nicht sauber` as **Open PR** step 1 says), `git log --oneline <base>..HEAD`, `git status --porcelain` and `git diff --stat`. Write what you found to `<scratch>/history/builder-<N>-aborted.md`: how it ended (the error or exit code), the commits on the branch, the uncommitted files.
+3. **New builder, once per job.** The aborted one can't be resumed. Spawn `builder` again **with the name `builder-<job>`** and the prompt `<head> Build round <N>. A builder before you was aborted; read <scratch>/history/builder-<N>-aborted.md. Keep its commits, check its uncommitted changes against the tickets and keep or restore each, then go on with the round.`, plus the message the aborted one was given when it was resumed for a review round, checks or CI. Then **Build check** as usual.
+4. **Aborted again** in the same job: no third builder. Go on as for a `BLOCKED` builder in **Build check**, with `Builder abgebrochen: <how it ended>` as the blocker.
+
+The **Step** line: `#142 · builder 1 · ⛔ abgebrochen (Exit 137) → builder 1 neu`.
 
 ## Review round N
 
@@ -264,7 +275,7 @@ The first line of the builder's final report is `STATUS: READY` or `STATUS: BLOC
     - `pass: false`: no reviewer starts. Resume the builder with `SendMessage` to `builder-<job>`: `Checks fail at round N: read <scratch>/check.md, fix the cause, commit, rewrite pr.md.`, then **Build check** and this gate again. A job gets two such fixes in all; when the gate fails a third time, go to **Open PR** as a draft with `Checks rot: <failed>` under Needs human.
     - `pass: true`: go on.
 2. **Reviewers.** Spawn `reviewer-security` and `reviewer-code` **in one message**, so they run in parallel, and `reviewer-ui` in the same message when `ui` is true and the agent is installed. Each prompt is `<head> Review round N.`, plus ` Previous head: <prev>.` when `prev` is not null: then the reviewers check their last findings and review the delta since that head, not the whole branch again.
-3. **WAIT FOR ALL.** The round is done when every reviewer spawned in this round has finished and its `review-*.md` in `<scratch>` starts with `VERDICT: PASS` or `VERDICT: CHANGES`. Never resume the builder mid-round. If a reviewer finishes without such a file, stop with `⛔ Review-Datei fehlt`. Only the files of this round's reviewers count below: a `review-ui.md` of a round without UI review is the last one, already passed (`check` sends the UI reviewer again while its last verdict is CHANGES).
+3. **WAIT FOR ALL.** The round is done when every reviewer spawned in this round has finished and its `review-*.md` in `<scratch>` starts with `VERDICT: PASS` or `VERDICT: CHANGES`. Never resume the builder mid-round. If a reviewer finishes without such a file, stop with `⛔ Review-Datei fehlt`. A `review-code.md` without a `## Sub-agents` section that names both sub-agent ids or a reason for each missing one skipped a step of its process: put `Code-Review ohne Sub-Agenten (Runde N)` under Needs human, and say so in its **Step** line. Only the files of this round's reviewers count below: a `review-ui.md` of a round without UI review is the last one, already passed (`check` sends the UI reviewer again while its last verdict is CHANGES).
 4. Decide:
     - **All PASS**: go to **Open PR**.
     - **Any CHANGES, round 1 or 2**: resume the builder with `SendMessage` to `builder-<job>`: `Round N reviews are in <scratch>: <the files of this round>. Address every one with VERDICT: CHANGES, commit, and rewrite pr.md.` When it finishes, go to **Build check**.
