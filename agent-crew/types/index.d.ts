@@ -25,6 +25,7 @@ declare module 'claude-code' {
       cacheTtlMs: number
       main: MainState
       demo: boolean
+      bandFold: number
     }
   }
 }
