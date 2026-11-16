@@ -34,10 +34,10 @@ The worktree is a checkout of the job branch outside the main checkout you start
 A **brief** (`Brief: <scratch>/brief.md` in your prompt, from `/factory grill`) stands in for the tickets and their spec: the user approved it after a grilling. Its `Akzeptanzkriterien` (`Acceptance criteria`) are the acceptance criteria, its `Entscheidungen` (`Decisions`) are settled, its `Nicht-Ziele` (`Out of scope`) are the Out of Scope. Read it instead of tickets and spec; never decide against one of its decisions, and report BLOCKED when it contradicts itself or the code.
 
 1. `AGENTS.md`, the package `AGENTS.md` of every package you touch, and the config. Follow them.
-2. Every ticket with `gh issue view <n> --comments`, its parent spec (the `## Parent` section or the parent sub-issue) with its comments, and the mockup or prototype it links. The ticket's acceptance criteria are your test plan. When `gh` fails: the issue tracker fallbacks, or BLOCKED without them.
+2. Every ticket with `gh issue view <n> --json title,body,comments`, its parent spec (the `## Parent` section or the parent sub-issue) with its comments, and the mockup or prototype it links. The ticket's acceptance criteria are your test plan. When `gh` fails: the issue tracker fallbacks, or BLOCKED without them.
 3. The glossary and the decision records of the area.
 4. The doc that owns each file **before** you edit it, as the config's `## Docs` says.
-5. When resumed after a review round: the review files the message names. Address each finding in a `VERDICT: CHANGES` file. Notes in `VERDICT: PASS` files are optional.
+5. When resumed after a review round: the review files the message names. Address each finding in a `VERDICT: CHANGES` file. Notes in `VERDICT: PASS` files are optional, with one exception: a note that would change a file on the config's `## Danger list` is not taken up. Leave the file as it is and name the note in `pr.md` under `## Merge Danger` as a follow-up; touching a danger file for an optional note forces new checks and a new Needs human item.
 6. When started for a rework: `<scratch>/rework.md` and `git log --oneline <base>..HEAD`, so you know what is there.
 7. When resumed because the factory's checks failed (`<scratch>/check.md`) or the PR's CI failed (`<scratch>/ci.md`): that file. Its output names the failing command; reproduce it in the worktree, fix it at its cause, run **Validate** again.
 
@@ -58,6 +58,8 @@ When the config has a `## Specs` section, a ticket's spec is not an issue but th
     - **Docs**: update every owning doc in the same commit as the code, as the config's `## Docs` says. New domain terms go into the glossary.
 - Match the surrounding code: idioms, formatting, naming, imports, comment density. Code in English, user-facing copy in the language `AGENTS.md` names.
 - Make the smallest change that fully meets the ticket. Reuse shared types and helpers before writing one.
+- **Wrong things in a doc you touch**: when a doc you edit anyway states something the code or the checks show to be false (a wrong command, a check that tests the wrong thing, a stale path), fix it in the same commit and name it in `pr.md`'s Summary. When the fix is not obvious or reaches beyond that doc, leave it and name it in `pr.md` under `## Merge Danger` as a finding. Never leave it unmentioned.
+- **A rule you change**: when the change rewrites a rule, a convention or a decision in a doc, grep the repo for the old wording (docs, decision records, checklists, `Prüfen` and `Check` sections) and bring every statement of it in line in the same commit.
 - A large decision is the human's: anything the config's `## Product decisions` lists, a new service or provider, a cost, an irreversible data choice, a conflict with a decision record, a change to the design system, or a new screen without an approved mockup. Report BLOCKED. Small ambiguities you decide yourself and list as Assumptions.
 - **Bundle** (more than one ticket): build them one after another in the given order, each to its own acceptance criteria, with its own commits. A ticket you can't build drops out: leave the tree as its predecessor left it (`git restore` and `git clean` on its files only), drop every later ticket it blocks too, list each under `## Dropped` with the reason, and go on with the rest. When every ticket drops, report BLOCKED.
 - A small fix stays one bug or one copy change, with no new screen, no new schema model or migration and no new dependency. When it turns out bigger, report BLOCKED.
@@ -67,6 +69,11 @@ When the config has a `## Specs` section, a ticket's spec is not an issue but th
 Run the commands of the config's `## Validate` in the worktree, with `<files>` the files you changed (never the whole repo) and `<base>` your base. They must pass before you report READY.
 
 A failure is fixed at its cause (tooling problems in the tooling), with production code and checks left intact.
+
+**Long runs and honest exit codes.** A check, a test suite, a build or an install that can take minutes:
+
+- Run it with `run_in_background: true` and wait for the notification that it ended; meanwhile do other work or end the step. Never wait in a loop of `sleep`, and never with `pgrep -f`: it matches the shell that runs it. A foreground command gets a `timeout` that the run really fits in.
+- The exit code is the evidence. Read it from the command itself: write the output to a file (`<cmd> > <scratch>/<name>.log 2>&1; echo "exit $?"`) and read the file's tail after. When you pipe, start with `set -o pipefail`; `<cmd> | tail -1` alone reports the exit code of `tail`, and a red run reads as green.
 
 `node <skills>/factory/scripts/factory.mjs check <job> --section Validate` runs them for you with `<files>` and `<base>` filled in and writes the result to `<scratch>/validate.md`.
 

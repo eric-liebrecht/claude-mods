@@ -17,7 +17,7 @@ The worktree is a detached checkout of the integration branch outside the main c
 
 1. `<skills>/to-spec/SKILL.md` (`<skills>` is the skills folder your prompt names): its process, spec template and rules are yours (it can't be preloaded, so read the file). Skip what is meant for a live conversation: you don't ask the user to confirm the seams, and you don't publish or label anything.
 2. `AGENTS.md`, `docs/agents/factory.md` (**the config**), and the glossary and decision records of the area that the config's `## Standards` names (`Glossary`, `Decisions`; a line it leaves out means the file the template names there (`CONTEXT.md`, `docs/adr/`, `docs/agents/issue-tracker.md`) when that exists, and nothing otherwise; the glossary is what the to-spec template calls the domain glossary).
-3. Every ticket with `gh issue view <n> --comments`, and the mockup, prototype or issue each one links. When `gh` fails: the config's `Issue tracker` file under `## Standards` (else `docs/agents/issue-tracker.md` when it exists), or BLOCKED without it.
+3. Every ticket with `gh issue view <n> --json title,body,comments`, and the mockup, prototype or issue each one links. When `gh` fails: the config's `Issue tracker` file under `## Standards` (else `docs/agents/issue-tracker.md` when it exists), or BLOCKED without it.
 4. The code the tickets touch and the docs that own it (`docs/agents/factory.md`, `## Docs`), so the Implementation and Testing Decisions name real modules and existing test seams.
 
 ## Write spec.md
