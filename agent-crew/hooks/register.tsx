@@ -43,6 +43,33 @@ let mainBusy = false
 const demo = atom({ plugin: 'agent-crew', key: 'demo' } as const, false)
 let demoOn = false
 
+// The band above the prompt folds away behind its toggle: 0 is open, FOLD closed. It folds in steps,
+// cache line first, then the critters, then the flow, while the chevron turns from ▾ to ▸.
+const bandFold = atom({ plugin: 'agent-crew', key: 'bandFold' } as const, 0)
+const FOLD = 3
+const FOLD_MS = 70
+const CHEVRON = ['▾', '◢', '◢', '▸']
+// Where the fold is and where it goes, kept here for the timer, which reads no atoms.
+let foldAt = 0
+let foldTo = 0
+let folding = false
+const stepFold = ($: any) => {
+  if (foldAt === foldTo) {
+    folding = false
+    return
+  }
+  foldAt += Math.sign(foldTo - foldAt)
+  void update($, bandFold, () => foldAt).catch(() => {})
+  $.clock.after(FOLD_MS, () => stepFold($))
+}
+async function toggleBand($: any) {
+  foldTo = foldTo === 0 ? FOLD : 0
+  await $.store.set('bandClosed', foldTo === FOLD)
+  if (folding) return
+  folding = true
+  stepFold($)
+}
+
 type Step = { label: string; names: string[]; command: string }
 const STEPS: Step[] = [
   { label: 'Grillen', names: ['grill-me', 'grill-with-docs', 'grilling'], command: '/mattpocock-skills:grill-me' },
@@ -379,6 +406,9 @@ export const register: Register = on => {
 
     const saved = await $.store.get('flow')
     if (typeof saved === 'number') await update($, flow, () => saved)
+    foldAt = foldTo = (await $.store.get('bandClosed')) === true ? FOLD : 0
+    folding = false
+    await update($, bandFold, () => foldAt)
 
     const named = new Set<string>()
     const known = new Map<string, number>()
@@ -590,10 +620,31 @@ export const register: Register = on => {
     if (e.props.hasSurvey) return next(e)
 
     const now = await $.clock.now()
-    const s = await snapshot($, now)
-    const list = s.list.filter(a => isLive(a) || (a.endedAt !== undefined && now - a.endedAt < 8000))
     const ui = $.ui.resolve(e) as any
     const { Box, Text, Button } = ui
+    const fold = await read($, bandFold)
+    // Top right of the band: a crew icon and the chevron that folds it.
+    const toggle = (
+      <Button
+        key="band-toggle"
+        plain
+        label={fold === FOLD ? 'Agent Crew ausklappen' : 'Agent Crew einklappen'}
+        onPress={() => toggleBand($)}
+      >
+        <Text color="suggestion">◈ </Text>
+        <Text bold color="suggestion">{CHEVRON[fold] ?? '▾'}</Text>
+      </Button>
+    )
+    if (fold >= FOLD) {
+      return (
+        <Box flexDirection="row" justifyContent="flex-end" width="100%">
+          {toggle}
+        </Box>
+      )
+    }
+
+    const s = await snapshot($, now)
+    const list = s.list.filter(a => isLive(a) || (a.endedAt !== undefined && now - a.endedAt < 8000))
     const draw = drawings(ui, e.surface)
     const open = () => $.ui.open(OPEN)
     const sum = totalOf(s.tok)
@@ -614,18 +665,21 @@ export const register: Register = on => {
     const bossSprite = spriteFor(mainAgent(s.boss, now), (s.acts[MAIN] ?? []).slice(-1)[0], now)
     const bossStatus = [LABEL[bossSprite], s.boss.busy ? sec(now - s.boss.since) : '', modelName(s.mods[MAIN])].filter(Boolean).join(' · ')
     return (
-      <Box flexDirection="column" alignItems="center">
+      <Box flexDirection="column" alignItems="center" position="relative" width="100%">
         {stepper($, Box, Text, Button, s.active, s.t % 2, s.ranRetro)}
-        <Box flexDirection="row" flexWrap="wrap" alignSelf="flex-start" marginTop={1}>
-          {critter(MAIN, BOSS[bossSprite]![s.t % 2]!, 'Claude', bossStatus, GOLD, s.boss.busy ? s.t : undefined)}
-          {list.slice(0, 3).map(a => {
-            const sprite = spriteFor(a, (s.acts[a.id] ?? []).slice(-1)[0], now)
-            const status = [LABEL[sprite], modelName(s.mods[a.id])].filter(Boolean).join(' · ')
-            return critter(a.id, SPRITES[sprite]![s.t % 2]!, s.nm[a.id] ?? a.type, status, hueOf(a.id, s.nm), isLive(a) ? s.t : undefined)
-          })}
-          {list.length > 3 && <Text color="inactive">+{list.length - 3}</Text>}
-        </Box>
-        <Box marginTop={1}>{cacheLine(ui, e.surface, s.cs, now, s.ttl)}</Box>
+        {fold < 2 && (
+          <Box flexDirection="row" flexWrap="wrap" alignSelf="flex-start" marginTop={1}>
+            {critter(MAIN, BOSS[bossSprite]![s.t % 2]!, 'Claude', bossStatus, GOLD, s.boss.busy ? s.t : undefined)}
+            {list.slice(0, 3).map(a => {
+              const sprite = spriteFor(a, (s.acts[a.id] ?? []).slice(-1)[0], now)
+              const status = [LABEL[sprite], modelName(s.mods[a.id])].filter(Boolean).join(' · ')
+              return critter(a.id, SPRITES[sprite]![s.t % 2]!, s.nm[a.id] ?? a.type, status, hueOf(a.id, s.nm), isLive(a) ? s.t : undefined)
+            })}
+            {list.length > 3 && <Text color="inactive">+{list.length - 3}</Text>}
+          </Box>
+        )}
+        {fold < 1 && <Box marginTop={1}>{cacheLine(ui, e.surface, s.cs, now, s.ttl)}</Box>}
+        <Box position="absolute" top={0} right={0}>{toggle}</Box>
       </Box>
     )
   })

@@ -5,7 +5,7 @@ Mods for Claude Code by Eric Liebrecht.
 ## agent-crew
 
 Live view of running sub-agents as animated pixel critters, with the current step of the engineering flow
-(grill, spec, tickets, implement, retro, PR) and the state of the session's prompt cache. A band above the prompt and a pane (`/crew`). `/crew demo` toggles three made-up agents for a look at the dashboard without a running crew.
+(grill, spec, tickets, implement, retro, PR) and the state of the session's prompt cache. A band above the prompt and a pane (`/crew`). The chevron in the band's top right corner folds it away to the toggle alone and unfolds it again; the band remembers it for the next session. `/crew demo` toggles three made-up agents for a look at the dashboard without a running crew.
 The retro is optional, only every now and then: Claude is told not to run one every round, and a round that goes
 straight to `/pr` shows it as skipped.
 
