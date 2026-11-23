@@ -48,7 +48,11 @@ let demoOn = false
 const bandFold = atom({ plugin: 'agent-crew', key: 'bandFold' } as const, 0)
 const FOLD = 3
 const FOLD_MS = 70
-const CHEVRON = ['▾', '◢', '◢', '▸']
+const CHEVRON = ['▾', '◂', '◂', '▸']
+// The band's two icon buttons: the pane on the right (dim while it is closed) and the fold.
+const PANE_ICON = '◨'
+const CONTROLS_COLUMNS = 5
+const SEP = '   ·   '
 // Where the fold is and where it goes, kept here for the timer, which reads no atoms.
 let foldAt = 0
 let foldTo = 0
@@ -68,6 +72,23 @@ async function toggleBand($: any) {
   if (folding) return
   folding = true
   stepFold($)
+}
+
+// Whether the pane on the right is open, so the band's details toggle shows the way it goes. Kept up
+// by our own opens and closes and by `ui.close`, which also hears the person's close mark.
+const paneOpen = atom({ plugin: 'agent-crew', key: 'paneOpen' } as const, false)
+async function openPane($: any) {
+  await $.ui.open(OPEN)
+  await update($, paneOpen, () => true)
+}
+async function togglePane($: any) {
+  const isUp = (await $.ui.panes()).some((p: any) => p.id === PANE)
+  if (isUp) {
+    await $.ui.close({ id: PANE })
+    await update($, paneOpen, () => false)
+  } else {
+    await openPane($)
+  }
 }
 
 type Step = { label: string; names: string[]; command: string }
@@ -199,8 +220,6 @@ const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…`
 const kTok = (n: number) => (n >= 1_000_000 ? `${(n / 1e6).toFixed(1)}M` : n >= 1000 ? `${Math.round(n / 1000)}k` : `${n}`)
 const totalOf = (tok: Record<string, number>) => Object.values(tok).reduce((a, b) => a + b, 0)
 const shareOf = (n: number | undefined, sum: number) => (sum > 0 ? Math.round(((n ?? 0) / sum) * 100) : 0)
-// Longest status or task line on a card; it must stay one line.
-const CARD_TEXT = 48
 // Rows of the screen a docked pane leaves to the engine: prompt, status lines, its own title.
 const PANE_CHROME = 9
 
@@ -325,26 +344,58 @@ function cacheNow(c: CacheStats, now: number, ttlMs: number) {
   }
 }
 
-// The cache in one line, for the band above the prompt.
-function cacheLine(ui: any, surface: string, c: CacheStats, now: number, ttlMs: number) {
+// The cache in one line, for the band above the prompt: the bar takes what the words leave.
+function cacheLine(ui: any, surface: string, c: CacheStats, now: number, ttlMs: number, width: number) {
   const { Box, Text } = ui
   const s = cacheNow(c, now, ttlMs)
   if (!s) return <Text color="inactive">Cache: noch keine Daten</Text>
   const warm = s.left > 0
+  const long = warm ? ` · Treffer ${s.hit}% · bis ${clockTime(s.expiresAt)}` : ` · kalt seit ${ago(-s.left)} · nächster Prompt schreibt neu`
+  const short = warm ? ` · bis ${clockTime(s.expiresAt)}` : ` · kalt seit ${ago(-s.left)}`
+  const tail = width >= 6 + 5 + long.length + 16 ? long : short
   return (
-    <Box flexDirection="row" alignItems="center" width={72}>
+    <Box flexDirection="row" alignItems="center" width={Math.min(width, 80)}>
       <Text color="inactive">Cache </Text>
       <Box flexGrow={1} flexShrink={1} flexDirection="row">{drawings(ui, surface).bar(s.remaining, s.hue, undefined, 100)}</Box>
-      <Text bold color={s.hue.fg}> {s.remaining}%</Text>
-      <Text color="inactive">
-        {warm ? ` · Treffer ${s.hit}% · bis ${clockTime(s.expiresAt)}` : ` · kalt seit ${ago(-s.left)} · nächster Prompt schreibt neu`}
+      <Text bold color={s.hue.fg}>{` ${s.remaining}%`}</Text>
+      <Text color="inactive" wrap="truncate">{tail}</Text>
+    </Box>
+  )
+}
+
+// The folded band's line, three short facts at most: Claude and what it does, the crew (one agent
+// by name, more as a count), the cache's warmth. Each keeps its words whole; what does not fit
+// is left out, the cache first, so the line never squeezes or wraps.
+type Part = { id: 'claude' | 'crew' | 'cache'; head: string; value: string }
+function foldedParts(room: number, parts: Part[]): Part[] {
+  const out: Part[] = []
+  let left = room
+  for (const p of parts) {
+    const w = p.head.length + 1 + p.value.length + (out.length > 0 ? SEP.length : 0)
+    if (w > left && out.length > 0) continue
+    out.push(p)
+    left -= w
+  }
+  return out
+}
+
+// The flow in the band: every step as a chip where the row has room, else the active one alone.
+function bandSteps(Box: any, Text: any, Button: any, $: any, active: number, pulse: number, ranRetro: boolean, room: number) {
+  const full = STEPS.reduce((n, st) => n + st.label.length + 2, 0) + (STEPS.length - 1) * 3
+  if (room >= full) return stepper($, Box, Text, Button, active, pulse, ranRetro, false)
+  const done = active >= STEPS.length
+  return (
+    <Box flexDirection="row">
+      <Text color={done ? 'success' : 'suggestion'} bold>
+        {done ? '✓ Alles erledigt' : `${pulse ? '◉' : '●'} ${STEPS[active]!.label}`}
       </Text>
+      {!done && <Text color="inactive">{`  ${active + 1}/${STEPS.length}`}</Text>}
     </Box>
   )
 }
 
 // The flow as one row of chips: done, active, open. A press writes the skill into the prompt.
-function stepper($: any, Box: any, Text: any, Button: any, active: number, pulse: number, ranRetro: boolean) {
+function stepper($: any, Box: any, Text: any, Button: any, active: number, pulse: number, ranRetro: boolean, note = true) {
   return (
     <Box flexDirection="row" flexWrap="wrap" alignItems="center">
       {STEPS.map((st, i) => {
@@ -365,7 +416,7 @@ function stepper($: any, Box: any, Text: any, Button: any, active: number, pulse
           </Box>
         )
       })}
-      {!ranRetro && <Text color="inactive" italic>{`  ${RETRO_NOTE}`}</Text>}
+      {note && !ranRetro && <Text color="inactive" italic>{`  ${RETRO_NOTE}`}</Text>}
       {active >= STEPS.length && <Text color="success" bold>{'  Alles erledigt'}</Text>}
     </Box>
   )
@@ -397,7 +448,7 @@ async function refreshAll($: any) {
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
-    void $.ui.open(OPEN)
+    void openPane($).catch(() => {})
     demoOn = await read($, demo)
 
     $.clock.every(10000, () => update($, tick, n => n + 1))
@@ -494,8 +545,19 @@ export const register: Register = on => {
       demoOn = !demoOn
       await update($, demo, () => demoOn)
     }
-    await $.ui.open(OPEN)
+    await openPane($)
     return { text: `Agent Crew pane opened${demoOn ? ' (demo)' : ''}.` }
+  })
+
+  // The pane closes, by its close mark, a key or our toggle: the band's details toggle turns back.
+  on('ui.close', async ($, e, next) => {
+    const r = await next(e)
+    try {
+      if (e.id === PANE) await update($, paneOpen, () => false)
+    } catch {
+      // display only
+    }
+    return r
   })
 
   // A turn of the main agent starts: its critter gets to work.
@@ -615,71 +677,107 @@ export const register: Register = on => {
     return ran
   })
 
-  // Band above the prompt: the flow, one critter per agent with its bar, and the cache in a line.
+  // Band above the prompt, sized to the cells it is given: a head row with the flow and two icon
+  // buttons (the pane on the right, the fold), then the critters and the cache. Folded, one line
+  // with as many details as fit: who works and how, the step and the cache.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e)
 
     const now = await $.clock.now()
     const ui = $.ui.resolve(e) as any
     const { Box, Text, Button } = ui
+    const width = Math.max(24, (e.props as any).bodyColumns ?? 100)
     const fold = await read($, bandFold)
-    // Top right of the band: a crew icon and the chevron that folds it.
-    const toggle = (
-      <Button
-        key="band-toggle"
-        plain
-        label={fold === FOLD ? 'Agent Crew ausklappen' : 'Agent Crew einklappen'}
-        onPress={() => toggleBand($)}
-      >
-        <Text color="suggestion">◈ </Text>
-        <Text bold color="suggestion">{CHEVRON[fold] ?? '▾'}</Text>
-      </Button>
+    const isPaneUp = await read($, paneOpen)
+    const s = await snapshot($, now)
+
+    // Icons only: a desktop draws a Button as its label, so the glyph is the whole control.
+    const controls = (
+      <Box key="band-controls" flexDirection="row" flexShrink={0} columnGap={1}>
+        <Button key="pane-toggle" plain dimColor={!isPaneUp} label={PANE_ICON} onPress={() => togglePane($)} />
+        <Button key="band-toggle" plain label={CHEVRON[fold] ?? '▾'} onPress={() => toggleBand($)} />
+      </Box>
     )
+    const room = width - CONTROLS_COLUMNS
+
+    const list = s.list.filter(a => isLive(a) || (a.endedAt !== undefined && now - a.endedAt < 8000))
+    const live = list.filter(isLive)
+    const bossSprite = spriteFor(mainAgent(s.boss, now), (s.acts[MAIN] ?? []).slice(-1)[0], now)
+    const bossStatus = [LABEL[bossSprite], s.boss.busy ? sec(now - s.boss.since) : '', modelName(s.mods[MAIN])].filter(Boolean).join(' · ')
+    const c = cacheNow(s.cs, now, s.ttl)
+
     if (fold >= FOLD) {
+      const one = live.length === 1 ? live[0]! : undefined
+      const crew: Part | undefined =
+        live.length === 0 ? undefined
+        : one ? { id: 'crew', head: s.nm[one.id] ?? one.type, value: LABEL[spriteFor(one, (s.acts[one.id] ?? []).slice(-1)[0], now)]! }
+        : { id: 'crew', head: `${live.length} Agenten`, value: 'aktiv' }
+      const parts = foldedParts(room, [
+        { id: 'claude', head: '♛ Claude', value: LABEL[bossSprite]! },
+        ...(crew ? [crew] : []),
+        { id: 'cache', head: 'Cache', value: !c ? '–' : c.left > 0 ? `${c.remaining}%` : 'kalt' },
+      ])
+      const headColor: Record<string, string> = { claude: GOLD.fg, crew: 'text', cache: 'inactive' }
+      const valueColor: Record<string, string> = { claude: 'inactive', crew: 'inactive', cache: c ? c.hue.fg : 'inactive' }
       return (
-        <Box flexDirection="row" justifyContent="flex-end" width="100%">
-          {toggle}
+        <Box flexDirection="row" alignItems="center" justifyContent="space-between" width={width}>
+          <Box flexDirection="row" alignItems="center" flexShrink={1} overflow="hidden">
+            {parts.map((p, i) => (
+              <Box key={`part-${p.id}`} flexDirection="row" flexShrink={0}>
+                {i > 0 && <Text color="inactive">{SEP}</Text>}
+                <Text bold color={headColor[p.id]}>{p.head}</Text>
+                <Text color={valueColor[p.id]}>{` ${p.value}`}</Text>
+              </Box>
+            ))}
+          </Box>
+          {controls}
         </Box>
       )
     }
 
-    const s = await snapshot($, now)
-    const list = s.list.filter(a => isLive(a) || (a.endedAt !== undefined && now - a.endedAt < 8000))
     const draw = drawings(ui, e.surface)
-    const open = () => $.ui.open(OPEN)
+    const open = () => openPane($)
     const sum = totalOf(s.tok)
+    // Critters as fit the row: each takes its sprite, a gap and its text column.
+    const nameColumns = 16
+    const perCritter = SPRITE_COLUMNS + 1 + nameColumns + 2
+    const fits = Math.max(1, Math.floor(width / perCritter))
+    const shown = list.slice(0, fits - 1)
+    const more = list.length - shown.length
 
     const critter = (id: string, source: string, name: string, status: string, hue: Hue, pulse?: number) => (
-      <Box key={`agent-${id}`} flexDirection="row" marginRight={2}>
+      <Box key={`agent-${id}`} flexDirection="row" marginRight={2} flexShrink={0}>
         {draw.sprite(`band-${id}`, source, status)}
-        <Box flexDirection="column" marginLeft={1} width={18}>
-          <Button key={`open-${id}`} plain onPress={open}>
-            <Text bold color="text">{clip(name, 18)}</Text>
-          </Button>
-          <Text color="inactive">{clip(status, 18)}</Text>
-          <Box flexDirection="row">{draw.bar(shareOf(s.tok[id], sum), hue, pulse, 120)}</Box>
+        <Box flexDirection="column" marginLeft={1} width={nameColumns}>
+          <Button key={`open-${id}`} plain label={clip(name, nameColumns)} onPress={open} />
+          <Text color="inactive" wrap="truncate">{clip(status, nameColumns)}</Text>
+          <Box flexDirection="row">{draw.bar(shareOf(s.tok[id], sum), hue, pulse, 110)}</Box>
         </Box>
       </Box>
     )
 
-    const bossSprite = spriteFor(mainAgent(s.boss, now), (s.acts[MAIN] ?? []).slice(-1)[0], now)
-    const bossStatus = [LABEL[bossSprite], s.boss.busy ? sec(now - s.boss.since) : '', modelName(s.mods[MAIN])].filter(Boolean).join(' · ')
     return (
-      <Box flexDirection="column" alignItems="center" position="relative" width="100%">
-        {stepper($, Box, Text, Button, s.active, s.t % 2, s.ranRetro)}
+      <Box flexDirection="column" width={width}>
+        <Box flexDirection="row" alignItems="center">
+          <Box flexGrow={1} flexShrink={1}>{bandSteps(Box, Text, Button, $, s.active, s.t % 2, s.ranRetro, room)}</Box>
+          {controls}
+        </Box>
         {fold < 2 && (
-          <Box flexDirection="row" flexWrap="wrap" alignSelf="flex-start" marginTop={1}>
+          <Box flexDirection="row" marginTop={1}>
             {critter(MAIN, BOSS[bossSprite]![s.t % 2]!, 'Claude', bossStatus, GOLD, s.boss.busy ? s.t : undefined)}
-            {list.slice(0, 3).map(a => {
+            {shown.map(a => {
               const sprite = spriteFor(a, (s.acts[a.id] ?? []).slice(-1)[0], now)
               const status = [LABEL[sprite], modelName(s.mods[a.id])].filter(Boolean).join(' · ')
               return critter(a.id, SPRITES[sprite]![s.t % 2]!, s.nm[a.id] ?? a.type, status, hueOf(a.id, s.nm), isLive(a) ? s.t : undefined)
             })}
-            {list.length > 3 && <Text color="inactive">+{list.length - 3}</Text>}
+            {more > 0 && (
+              <Box alignSelf="center">
+                <Button key="band-more" plain dimColor label={`+${more}`} onPress={open} />
+              </Box>
+            )}
           </Box>
         )}
-        {fold < 1 && <Box marginTop={1}>{cacheLine(ui, e.surface, s.cs, now, s.ttl)}</Box>}
-        <Box position="absolute" top={0} right={0}>{toggle}</Box>
+        {fold < 1 && <Box marginTop={1}>{cacheLine(ui, e.surface, s.cs, now, s.ttl, width)}</Box>}
       </Box>
     )
   })
@@ -694,6 +792,11 @@ export const register: Register = on => {
     const done = list.filter(a => !isLive(a)).slice(-3)
     const sum = totalOf(tok)
 
+    // Cells across the pane's body: cards, headings and bars are cut to it.
+    const width = Math.max(28, (e.props as any).bodyColumns ?? 60)
+    const textColumns = Math.max(8, width - SPRITE_COLUMNS - 7)
+    const narrow = width < 44
+    const barPx = Math.max(60, Math.min(180, (textColumns - 7) * 7))
     const issueLine = (n: number) => `#${n} ${iss[String(n)]?.title || '…'}`
     const issueCount = Math.min(Object.keys(iss).length, 8)
 
@@ -720,18 +823,18 @@ export const register: Register = on => {
         {slim && <Box width={1} height={SPRITE_ROWS} marginRight={1} backgroundColor={c.hue.fg} />}
         <Box marginRight={2} flexShrink={0}>{draw.sprite(`sprite-${c.id}`, c.source, c.status, SPRITE_BG)}</Box>
         <Box flexDirection="column" flexGrow={1} flexShrink={1}>
-          <Box flexDirection="row" justifyContent="space-between">
-            <Box flexDirection="row">
-              <Text bold color={INK}>{c.name}</Text>
-              {c.tag && <Box marginLeft={2}><Text color={c.hue.fg}>{c.tag}</Text></Box>}
+          <Box flexDirection="row" justifyContent="space-between" columnGap={1}>
+            <Box flexDirection="row" flexShrink={1}>
+              <Text bold color={INK} wrap="truncate">{c.name}</Text>
+              {c.tag && !narrow && <Box marginLeft={2} flexShrink={1}><Text color={c.hue.fg} wrap="truncate">{c.tag}</Text></Box>}
             </Box>
-            <Text color={c.hue.fg}>{c.badge}</Text>
+            <Box flexShrink={0}><Text color={c.hue.fg}>{c.badge}</Text></Box>
           </Box>
-          <Text color={c.hue.fg} wrap="truncate">{clip(c.status, CARD_TEXT)}</Text>
-          {c.task ? <Text color={SOFT} wrap="truncate">{clip(c.task, CARD_TEXT)}</Text> : null}
+          <Text color={c.hue.fg} wrap="truncate">{clip(c.status, textColumns)}</Text>
+          {c.task ? <Text color={SOFT} wrap="truncate">{clip(c.task, textColumns)}</Text> : null}
           <Box flexDirection="row" alignItems="center">
-            {draw.bar(shareOf(tok[c.id], sum), c.hue, c.pulse)}
-            <Text bold color={c.hue.fg}>{` ${kTok(tok[c.id] ?? 0).padStart(5)}`}</Text>
+            <Box flexGrow={1} flexShrink={1} flexDirection="row">{draw.bar(shareOf(tok[c.id], sum), c.hue, c.pulse, barPx)}</Box>
+            <Box flexShrink={0}><Text bold color={c.hue.fg}>{` ${kTok(tok[c.id] ?? 0).padStart(5)}`}</Text></Box>
           </Box>
         </Box>
       </Box>
@@ -798,10 +901,14 @@ export const register: Register = on => {
     const section = (key: string, title: string, meta: string, body: any, action?: any) => (
       <Box key={`sec-${key}`} flexDirection="column" marginBottom={slim ? 0 : 1}>
         <Box flexDirection="row" alignItems="center">
-          <Text bold color="suggestion">▍</Text>
-          <Text bold color="text">{title}</Text>
-          {meta ? <Box marginLeft={3}><Text color="inactive">{meta}</Text></Box> : null}
-          {action ? <Box marginLeft={3}>{action}</Box> : null}
+          <Box flexShrink={0} flexDirection="row">
+            <Text bold color="suggestion">▍</Text>
+            <Text bold color="text">{title}</Text>
+          </Box>
+          <Box marginLeft={2} flexGrow={1} flexShrink={1}>
+            {meta ? <Text color="inactive" wrap="truncate">{meta}</Text> : null}
+          </Box>
+          {action ? <Box marginLeft={1} flexShrink={0}>{action}</Box> : null}
         </Box>
         {body}
       </Box>
@@ -819,7 +926,7 @@ export const register: Register = on => {
         <Box key={`issue-${n}`} flexDirection="row" flexWrap="wrap" columnGap={2}>
           <Text bold color={w.length > 0 ? 'text' : 'inactive'}>#{n}</Text>
           {st && <Text color={st.color}>{st.label}</Text>}
-          <Text color={i?.title ? 'text' : 'inactive'}>{i?.title ? clip(i.title, 60) : 'Titel wird geladen …'}</Text>
+          <Text color={i?.title ? 'text' : 'inactive'} wrap="truncate">{i?.title ? clip(i.title, width - 16) : 'Titel wird geladen …'}</Text>
           {w.map(a => (
             <Text key={`worker-${n}-${a.id}`} bold color="text">
               {a.id === MAIN ? 'Claude' : nm[a.id] ?? a.type}
@@ -833,15 +940,15 @@ export const register: Register = on => {
     const c = cacheNow(cs, now, ttl)
     const crewTokens = sum - (tok[MAIN] ?? 0)
     const gauge = (key: string, label: string, pct: number | null, hue: Hue, note: string) => (
-      <Box key={`gauge-${key}`} flexDirection="column" alignItems="center" marginRight={3} width={14}>
+      <Box key={`gauge-${key}`} flexDirection="column" alignItems="center" marginX={1} width={14}>
         {draw.ring(`ring-${key}`, pct, hue, pct === null ? '–' : `${pct}%`)}
         <Text bold color="text">{label}</Text>
         <Text color="inactive">{note}</Text>
       </Box>
     )
 
-    const flowMeta = active >= STEPS.length ? 'alles erledigt' : `Schritt ${active + 1} von ${STEPS.length}`
-    const crewMeta = [`${running.length} aktiv`, done.length > 0 ? `${done.length} fertig` : '', 'Balken: Token-Anteil'].filter(Boolean).join(' · ')
+    const flowMeta = active >= STEPS.length ? 'alles erledigt' : `${active + 1}/${STEPS.length}`
+    const crewMeta = [`${running.length} aktiv`, done.length > 0 ? `${done.length} fertig` : '', narrow ? '' : 'Balken: Token-Anteil'].filter(Boolean).join(' · ')
     const busyIssues = issueNumbers.filter(n => workersOf(n).length > 0).length
 
     return (
@@ -860,7 +967,7 @@ export const register: Register = on => {
               await update($, retroRan, () => false)
             }}
           >
-            <Text color="inactive">↺ zurücksetzen</Text>
+            <Text color="inactive">{narrow ? '↺' : '↺ zurücksetzen'}</Text>
           </Button>,
         )}
         {section(

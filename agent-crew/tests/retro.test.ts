@@ -21,8 +21,12 @@ const retroText = async ($: any) =>
 test('the retro is optional and Claude is told so', async ($, on) => {
   await setup($, on)
   expect(await retroText($)).toMatch(/optional und nur immer mal wieder/)
-  const band = await $.ui.mount({ plugin: 'agent-crew', surface: 'terminal', component: 'AbovePrompt', props: {} as any })
-  expect(await band.find({ type: 'Text', text: /optional · immer mal wieder/ })).toBeDefined()
+  // The pane says why; the band, short of room, marks the skipped retro by its open ring alone.
+  const pane = await $.ui.mount({ plugin: 'agent-crew', surface: 'terminal', component: 'Pane', requestId: 'agent-crew', props: {} as any })
+  expect(await pane.find({ type: 'Text', text: /optional · immer mal wieder/ })).toBeDefined()
+  await pane.unmount()
+  const band = await $.ui.mount({ plugin: 'agent-crew', surface: 'terminal', component: 'AbovePrompt', props: { bodyColumns: 120 } as any })
+  expect(await band.find({ type: 'Text', text: /◌ Retro/ })).toBeDefined()
   await band.unmount()
 })
 

@@ -31,7 +31,7 @@ test('the main agent has its own card while its turn runs', async ($, on) => {
     await ui.unmount()
   }
   const band = await $.ui.mount({ plugin: 'agent-crew', surface: 'terminal', component: 'AbovePrompt', props: {} as any })
-  expect(await band.find({ type: 'Text', text: /^Claude$/ })).toBeDefined()
+  expect(await band.find({ type: 'Button', text: /^Claude$/ })).toBeDefined()
   expect(await band.find({ type: 'Text', text: /^sucht/ })).toBeDefined()
   await band.unmount()
 })

@@ -26,6 +26,7 @@ declare module 'claude-code' {
       main: MainState
       demo: boolean
       bandFold: number
+      paneOpen: boolean
     }
   }
 }
