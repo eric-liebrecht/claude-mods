@@ -101,3 +101,28 @@ test('an issue closed elsewhere shows as closed within a minute', async ($, on) 
   await clock.advance(60_000)
   expect(await issueState($)).toBe('closed')
 })
+
+test('the pane keeps its cards and headings inside its width, narrow or wide', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  on('agent.list', () => ({ value: [
+    { id: 'a1', type: 'general-purpose', description: 'Implement the very long ticket title that never ends in a narrow pane', status: 'running' },
+  ] }) as any)
+  on('tool.call', () => ({ result: 'ok' }) as any)
+  on('session.start', (_$: any, e: any) => ({ cwd: e.cwd }))
+  on('command.register', (_$: any, e: any) => ({ value: { command: e.name } }) as any)
+  on('ui.open', () => ({ value: { isPlaced: true } }) as any)
+  mock.store(on)
+  await $.session.start({ cwd: '/w', surface: 'terminal', isInteractive: true })
+  await clock.advance(600)
+  for (const bodyColumns of [30, 40, 60, 100]) {
+    for (const surface of ['terminal', 'desktop'] as const) {
+      const ui = await $.ui.mount({ plugin: 'agent-crew', surface, component: 'Pane', requestId: 'agent-crew', props: { bodyColumns } as any })
+      const task = await ui.find({ type: 'Text', text: /^Implement/ })
+      // Sprite, frame and gaps take the rest of the row.
+      expect(task!.text.length).toBeLessThanOrEqual(bodyColumns - 12 - 7)
+      expect((await ui.find({ type: 'Text', text: /Balken/ })) !== undefined).toBe(bodyColumns >= 44)
+      expect((await ui.find({ type: 'Text', text: /^Hauptagent$/ })) !== undefined).toBe(bodyColumns >= 44)
+      await ui.unmount()
+    }
+  }
+})
